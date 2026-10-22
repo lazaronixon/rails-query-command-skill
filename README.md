@@ -5,7 +5,7 @@ A Claude Code plugin that teaches Claude to answer data questions about a Rails 
 It's a fork of [lewispb/rails-query-skill](https://github.com/lewispb/rails-query-skill), adapted to:
 
 - Work on **Rails 7.2, 8.0 and 8.1** via the [`rails-query-command`](https://github.com/lazaronixon/rails-query-command) gem (and on Rails 8.2+ natively).
-- Run remotely through **any command in `$RAILS_QUERY_ALIAS`**, plus a small wrapper (`rq`) that makes remote quoting a non-issue.
+- Run remotely through **a command template in `$RAILS_QUERY_CMD`**, plus a small wrapper (`rq`) that makes remote quoting a non-issue.
 
 ## What it does
 
@@ -45,19 +45,21 @@ Or, from inside a Claude Code session:
 
 ## Remote setup
 
-Set `RAILS_QUERY_ALIAS` to the command that runs `rails query` on your deployed app. Query arguments are appended to it:
+Set `RAILS_QUERY_CMD` to a command template. It's the full command that runs `rails query`; `%s` marks where the query arguments go:
 
 ```bash
-export RAILS_QUERY_ALIAS='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query"'
+export RAILS_QUERY_CMD='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query %s"'
 ```
 
 Other examples:
 
 ```bash
-export RAILS_QUERY_ALIAS='ssh deploy@app.example.com "cd /srv/app/current && bin/rails query"'
-export RAILS_QUERY_ALIAS='kubectl exec -i deploy/web -- sh -c "bin/rails query"'
-export RAILS_QUERY_ALIAS='docker exec -i app sh -c "bin/rails query"'
+export RAILS_QUERY_CMD='ssh deploy@app.example.com "cd /srv/app/current && bin/rails query %s"'
+export RAILS_QUERY_CMD='kubectl exec -i deploy/web -- sh -c "bin/rails query %s"'
+export RAILS_QUERY_CMD='docker exec -i app sh -c "bin/rails query %s"'
 ```
+
+Keep `%s` inside the quoted command string for remote commands, so `rq` knows a remote shell will parse it too.
 
 Put it in your shell profile, a `.envrc` (direnv), or Claude Code's `settings.json` `env` block so Claude sees it.
 
@@ -71,15 +73,15 @@ rq schema users
 
 `rq` (`skills/rails-query/scripts/rq`):
 
-- **quotes the expression for both shells** (yours and the remote one), so parens, `*`, quotes, `$`, `&` and newlines arrive intact;
+- **quotes the expression for every layer**: your shell, and the remote shell when `%s` sits inside the quoted command string. So parens, `*`, quotes, `$`, `&` and newlines arrive intact;
 - validates flags (`--sql`, `--db`, `--page`, `--per`, `-e`) and table names;
 - keeps **only the JSON result on stdout** — `heroku run` banners and boot logs go to stderr;
 - propagates the exit code (use `--exit-code` with `heroku run`);
-- falls back to local `bin/rails query` when `RAILS_QUERY_ALIAS` is unset.
+- falls back to local `bin/rails query` when `RAILS_QUERY_CMD` is unset.
 
 | Variable | Purpose |
 |----------|---------|
-| `RAILS_QUERY_ALIAS` | Command that runs `rails query` remotely; query arguments are appended |
+| `RAILS_QUERY_CMD` | Command that runs `rails query`; `%s` is replaced with the query arguments (appended if absent) |
 | `RQ_DEBUG=1` | Print the expression and the final command to stderr |
 
 ## How triggering works
