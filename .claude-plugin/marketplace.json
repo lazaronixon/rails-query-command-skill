@@ -1,0 +1,14 @@
+{
+  "name": "rails-query-command-skill",
+  "owner": {
+    "name": "Lázaro Nixon Amaral de Almeida",
+    "url": "https://github.com/lazaronixon"
+  },
+  "plugins": [
+    {
+      "name": "rails-query-command",
+      "source": "./",
+      "description": "Run read-only queries against a Rails app's database via `rails query` — ActiveRecord or SQL, schema introspection, EXPLAIN, local or remote through any command in $RAILS_QUERY_COMMAND."
+    }
+  ]
+}

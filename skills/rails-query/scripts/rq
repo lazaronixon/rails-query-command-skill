@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# rq — run `rails query` locally or through the command template in $RAILS_QUERY_COMMAND.
+#
+# Usage: rq [--sql] [--db NAME] [--page N] [--per N] [-e ENV] (EXPRESSION | - | schema [TABLE] | models | explain EXPRESSION)
+#
+# Environment:
+#   RAILS_QUERY_COMMAND  Command template used to reach the deployed app. `{}` is replaced with the
+#                        remote shell command; without `{}` the remote command is appended as one
+#                        quoted argument. Unset = run `bin/rails query` locally.
+#                        e.g. heroku run --no-tty --exit-code --app my-app "cd apps/api && {}"
+#   RAILS_QUERY_RAILS    Rails executable on the remote side (default: bin/rails).
+#   RQ_DEBUG=1           Print the expression and final command to stderr.
+#
+# The expression is base64-encoded and decoded on the remote side, so it survives every quoting
+# layer (local shell, CLI, ssh, `bash -c`) untouched — write it with normal single quotes.
+
+set -euo pipefail
+
+die() { echo "rq: $*" >&2; exit 2; }
+
+if [[ -z "${RAILS_QUERY_COMMAND:-}" ]]; then
+  exec bin/rails query "$@"
+fi
+
+safe() {
+  [[ "$1" =~ ^[A-Za-z0-9_.-]+$ ]] || die "invalid value '$1' (allowed: letters, digits, _ . -)"
+  printf '%s' "$1"
+}
+
+flags=()
+positional=()
+
+while (($#)); do
+  case "$1" in
+    --sql)
+      flags+=(--sql); shift ;;
+    --db|--database|--page|--per|-e|--environment)
+      (($# >= 2)) || die "$1 needs a value"
+      flags+=("$1" "$(safe "$2")"); shift 2 ;;
+    --db=*|--database=*|--page=*|--per=*|--environment=*)
+      flags+=("${1%%=*}" "$(safe "${1#*=}")"); shift ;;
+    --)
+      shift; positional+=("$@"); break ;;
+    -)
+      positional+=("-"); shift ;;
+    -*)
+      die "unknown option $1" ;;
+    *)
+      positional+=("$1"); shift ;;
+  esac
+done
+
+read_expression() {
+  if [[ -z "${1:-}" || "$1" == "-" ]]; then
+    [[ -t 0 ]] && die "no expression given"
+    cat
+  else
+    printf '%s' "$1"
+  fi
+}
+
+rails="${RAILS_QUERY_RAILS:-bin/rails}"
+[[ "$rails" =~ ^[A-Za-z0-9_./-]+$ ]] || die "invalid RAILS_QUERY_RAILS '$rails'"
+
+expression=""
+case "${positional[0]:-}" in
+  schema)
+    ((${#positional[@]} <= 2)) || die "schema takes at most one table name"
+    args=(schema)
+    [[ -n "${positional[1]:-}" ]] && args+=("$(safe "${positional[1]}")")
+    remote="$rails query ${args[*]} ${flags[*]}" ;;
+  models)
+    ((${#positional[@]} == 1)) || die "models takes no arguments"
+    remote="$rails query models ${flags[*]}" ;;
+  explain)
+    ((${#positional[@]} <= 2)) || die "quote the expression as a single argument"
+    expression="$(read_expression "${positional[1]:-}")"
+    remote="echo $(printf '%s' "$expression" | base64 -w0) | base64 -d | $rails query explain - ${flags[*]}" ;;
+  *)
+    ((${#positional[@]} <= 1)) || die "quote the expression as a single argument"
+    expression="$(read_expression "${positional[0]:-}")"
+    remote="echo $(printf '%s' "$expression" | base64 -w0) | base64 -d | $rails query - ${flags[*]}" ;;
+esac
+remote="${remote% }"
+
+if [[ "$RAILS_QUERY_COMMAND" == *"{}"* ]]; then
+  command="${RAILS_QUERY_COMMAND//\{\}/$remote}"
+else
+  command="$RAILS_QUERY_COMMAND $(printf '%q' "$remote")"
+fi
+
+if [[ -n "${RQ_DEBUG:-}" ]]; then
+  [[ -n "$expression" ]] && echo "rq: expression: $expression" >&2
+  echo "rq: command: $command" >&2
+fi
+
+# Remote runners (heroku run, ssh, …) mix banners and boot logs into stdout. Keep the last JSON
+# line as the result and send everything else to stderr.
+output="$(mktemp)"
+trap 'rm -f "$output"' EXIT
+
+status=0
+bash -c "$command" </dev/null >"$output" || status=$?
+
+tr -d '\r' <"$output" >"$output.clean" && mv "$output.clean" "$output"
+json="$(grep -E '^[[:space:]]*[[{]' "$output" | tail -n 1 || true)"
+
+if [[ -z "$json" ]]; then
+  cat "$output" >&2
+  # A failing `rails query` already wrote its JSON error to stderr.
+  ((status != 0)) && exit "$status"
+  echo "rq: no JSON in output" >&2
+  exit 1
+fi
+
+grep -vxF -- "$json" "$output" >&2 || true
+
+if ((status == 0)) && [[ "$json" != '{"error":'* ]]; then
+  printf '%s\n' "$json"
+else
+  printf '%s\n' "$json" >&2
+  exit $((status == 0 ? 1 : status))
+fi
