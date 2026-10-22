@@ -1,24 +1,23 @@
 #!/usr/bin/env bash
-# rq — run `rails query` locally or through the command template in $RAILS_QUERY_COMMAND.
+# rq — run `rails query` locally or through the command in $RAILS_QUERY_ALIAS.
 #
 # Usage: rq [--sql] [--db NAME] [--page N] [--per N] [-e ENV] (EXPRESSION | - | schema [TABLE] | models | explain EXPRESSION)
 #
 # Environment:
-#   RAILS_QUERY_COMMAND  Command template used to reach the deployed app. `{}` is replaced with the
-#                        remote shell command; without `{}` the remote command is appended as one
-#                        quoted argument. Unset = run `bin/rails query` locally.
-#                        e.g. heroku run --no-tty --exit-code --app my-app "cd apps/api && {}"
-#   RAILS_QUERY_RAILS    Rails executable on the remote side (default: bin/rails).
+#   RAILS_QUERY_ALIAS  Command that runs `rails query` on the deployed app; the query arguments are
+#                        appended to it. Unset = run `bin/rails query` locally.
+#                        e.g. heroku run --no-tty --exit-code --app my-app "cd apps/api && bin/rails query"
 #   RQ_DEBUG=1           Print the expression and final command to stderr.
 #
-# The expression is base64-encoded and decoded on the remote side, so it survives every quoting
-# layer (local shell, CLI, ssh, `bash -c`) untouched — write it with normal single quotes.
+# `heroku run` and `ssh` join their arguments into one command for the
+# remote shell, so the expression is quoted for that shell and then for the local one. Write it
+# with normal single quotes.
 
 set -euo pipefail
 
 die() { echo "rq: $*" >&2; exit 2; }
 
-if [[ -z "${RAILS_QUERY_COMMAND:-}" ]]; then
+if [[ -z "${RAILS_QUERY_ALIAS:-}" ]]; then
   exec bin/rails query "$@"
 fi
 
@@ -59,8 +58,10 @@ read_expression() {
   fi
 }
 
-rails="${RAILS_QUERY_RAILS:-bin/rails}"
-[[ "$rails" =~ ^[A-Za-z0-9_./-]+$ ]] || die "invalid RAILS_QUERY_RAILS '$rails'"
+# Quote for the remote shell, then for the local one.
+quote() {
+  printf '%q' "'${1//\'/\'\\\'\'}'"
+}
 
 expression=""
 case "${positional[0]:-}" in
@@ -68,26 +69,22 @@ case "${positional[0]:-}" in
     ((${#positional[@]} <= 2)) || die "schema takes at most one table name"
     args=(schema)
     [[ -n "${positional[1]:-}" ]] && args+=("$(safe "${positional[1]}")")
-    remote="$rails query ${args[*]} ${flags[*]}" ;;
+    ;;
   models)
     ((${#positional[@]} == 1)) || die "models takes no arguments"
-    remote="$rails query models ${flags[*]}" ;;
+    args=(models) ;;
   explain)
     ((${#positional[@]} <= 2)) || die "quote the expression as a single argument"
     expression="$(read_expression "${positional[1]:-}")"
-    remote="echo $(printf '%s' "$expression" | base64 -w0) | base64 -d | $rails query explain - ${flags[*]}" ;;
+    args=(explain "$(quote "$expression")") ;;
   *)
     ((${#positional[@]} <= 1)) || die "quote the expression as a single argument"
     expression="$(read_expression "${positional[0]:-}")"
-    remote="echo $(printf '%s' "$expression" | base64 -w0) | base64 -d | $rails query - ${flags[*]}" ;;
+    args=("$(quote "$expression")") ;;
 esac
-remote="${remote% }"
+args+=("${flags[@]}")
 
-if [[ "$RAILS_QUERY_COMMAND" == *"{}"* ]]; then
-  command="${RAILS_QUERY_COMMAND//\{\}/$remote}"
-else
-  command="$RAILS_QUERY_COMMAND $(printf '%q' "$remote")"
-fi
+command="$RAILS_QUERY_ALIAS ${args[*]}"
 
 if [[ -n "${RQ_DEBUG:-}" ]]; then
   [[ -n "$expression" ]] && echo "rq: expression: $expression" >&2

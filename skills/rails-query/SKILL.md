@@ -5,7 +5,7 @@ description: |
   (built into Rails 8.2+, backported to Rails 7.2/8.0/8.1 by the `rails-query-command` gem):
   counts, lookups, "how many X", ad-hoc investigation, schema exploration, EXPLAIN plans,
   and aggregates — whether locally or against a deployed environment reached through the
-  command template in `$RAILS_QUERY_COMMAND` (Heroku, SSH, docker, kubectl, …). Trigger
+  command in `$RAILS_QUERY_ALIAS` (Heroku, SSH, docker, kubectl, …). Trigger
   broadly whenever the user asks for data from a Rails app's database, mentions
   `rails query` / `bin/rails query` / `rq` / `rails-query-command`, asks to inspect schema,
   tables, or models, wants to run SQL or ActiveRecord against the database, needs an EXPLAIN
@@ -28,9 +28,9 @@ Prefer it over a console, a script, or SSH for any data question. One invocation
 ### 1. Know where you're running
 
 - **Local** (`bin/rails query`) — development, tests, or anywhere you have the app checked out.
-- **Remote** (`rq`) — the deployed app, reached through the command template in `$RAILS_QUERY_COMMAND`. `rq` is the wrapper script at `scripts/rq` in this skill's directory (`${CLAUDE_PLUGIN_ROOT}/skills/rails-query/scripts/rq`). Call it by its full path.
+- **Remote** (`rq`) — the deployed app, reached through the command in `$RAILS_QUERY_ALIAS`. `rq` is the wrapper script at `scripts/rq` in this skill's directory (`${CLAUDE_PLUGIN_ROOT}/skills/rails-query/scripts/rq`). Call it by its full path.
 
-Check `echo "$RAILS_QUERY_COMMAND"`. If it's set and the user is asking about a deployed environment (production, staging, "live", the app name in the template), use `rq`. If it's empty, use `bin/rails query` — or, if the user wants remote data, ask them to set it up (see "Remote setup").
+Check `echo "$RAILS_QUERY_ALIAS"`. If it's set and the user is asking about a deployed environment (production, staging, "live", the app name in the command), use `rq`. If it's empty, use `bin/rails query` — or, if the user wants remote data, ask them to set it up (see "Remote setup").
 
 If `bin/rails query` says `Could not find command "query"`, the app is older than Rails 8.2 and doesn't have the gem — check `Gemfile.lock` for `rails-query-command` and suggest adding it.
 
@@ -124,19 +124,19 @@ Always order explicitly when paginating — without `ORDER BY`, page 2 can overl
 
 ## Remote setup
 
-`$RAILS_QUERY_COMMAND` is a command template for reaching the deployed app. `rq` builds the remote shell command (`… | bin/rails query …`) and puts it where `{}` is. Without `{}`, it's appended as a single quoted argument.
+`$RAILS_QUERY_ALIAS` is the command that runs `rails query` on the deployed app. `rq` appends the query arguments (expression, subcommand, flags) to it.
 
 ```bash
 # Heroku (monorepo, app in apps/api)
-export RAILS_QUERY_COMMAND='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && {}"'
+export RAILS_QUERY_ALIAS='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query"'
 
 # Others
-export RAILS_QUERY_COMMAND='ssh deploy@app.example.com "cd /srv/app/current && {}"'
-export RAILS_QUERY_COMMAND='kubectl exec -i deploy/web -- sh -c "{}"'
-export RAILS_QUERY_COMMAND='docker exec -i app sh -c "{}"'
+export RAILS_QUERY_ALIAS='ssh deploy@app.example.com "cd /srv/app/current && bin/rails query"'
+export RAILS_QUERY_ALIAS='kubectl exec -i deploy/web -- sh -c "bin/rails query"'
+export RAILS_QUERY_ALIAS='docker exec -i app sh -c "bin/rails query"'
 ```
 
-Keep `{}` inside double quotes in the template. Use `--no-tty` and `--exit-code` with `heroku run` so output isn't mangled and failures propagate. Set `RAILS_QUERY_RAILS=rails` if the remote has no `bin/rails`.
+The runner must join its arguments into one command for a remote shell, as `heroku run` and `ssh` do. Use `--no-tty` and `--exit-code` with `heroku run` so output isn't mangled and failures propagate.
 
 Then:
 
@@ -150,7 +150,7 @@ rq schema users
 
 ### Quoting
 
-There's nothing special to do. `rq` base64-encodes the expression and decodes it on the server, so parens, `*`, quotes, `$` and newlines survive every layer (local shell, Heroku CLI/ssh, the remote `bash -c`). Quote the way you would locally:
+There's nothing special to do. The remote shell eats one layer of quoting. `rq` adds that layer for you, so parens, `*`, quotes, `$`, `&` and newlines arrive intact. Quote the way you would locally:
 
 ```bash
 rq --sql "SELECT id FROM users WHERE email = 'alice@example.com'"
@@ -193,8 +193,8 @@ bin/rails query models | jq '.[] | select(.table_name == "accounts") | .model'
 | `SyntaxError: unexpected *` | SQL passed without `--sql` | Add `--sql` |
 | `Could not find command "query"` | Rails < 8.2 without the gem, or the remote isn't deployed with it yet | Add `gem "rails-query-command"` and deploy |
 | `rq: no JSON in output` | Boot crash, wrong directory, or runner error | Read the stderr above it; re-run with `RQ_DEBUG=1` to see the exact command |
-| `bin/rails: No such file or directory` remotely | Wrong `cd` in the template, or no binstub | Fix the template, or `RAILS_QUERY_RAILS=rails` |
-| `base64: command not found` remotely | Minimal image without coreutils | Install coreutils in the image |
+| `bin/rails: No such file or directory` remotely | Wrong `cd` in `$RAILS_QUERY_ALIAS`, or no binstub | Fix the `cd`, or use `rails query` |
+| Expression arrives with literal quotes / mangled | The runner doesn't go through a remote shell | Use a runner that does: `heroku run`, `ssh` |
 | `ActiveRecord::ReadOnlyError` | Expression tried to write | Rework to be read-only |
 | `LIMIT 101` in `meta.sql` unexpectedly | Default pagination probe | Expected — drives `meta.has_more` |
 | `has_more: true` but you wanted all rows | Default per-page hit | Raise `--per` (max 10000) or paginate with `--page` |

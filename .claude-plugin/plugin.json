@@ -1,7 +1,7 @@
 {
   "name": "rails-query-command",
   "version": "0.1.0",
-  "description": "Run read-only queries against a Rails app's database via `rails query` (Rails 8.2+, or 7.2–8.1 with the rails-query-command gem) — ActiveRecord or SQL, schema/model introspection, EXPLAIN, pagination, and remote execution through any command template in $RAILS_QUERY_COMMAND (Heroku, SSH, docker, kubectl).",
+  "description": "Run read-only queries against a Rails app's database via `rails query` (Rails 8.2+, or 7.2–8.1 with the rails-query-command gem) — ActiveRecord or SQL, schema/model introspection, EXPLAIN, pagination, and remote execution through any command in $RAILS_QUERY_ALIAS (Heroku, SSH, docker, kubectl, …).",
   "author": {
     "name": "Lázaro Nixon Amaral de Almeida",
     "url": "https://github.com/lazaronixon"
