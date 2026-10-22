@@ -5,7 +5,7 @@ A Claude Code plugin that teaches Claude to answer data questions about a Rails 
 It's a fork of [lewispb/rails-query-skill](https://github.com/lewispb/rails-query-skill), adapted to:
 
 - Work on **Rails 7.2, 8.0 and 8.1** via the [`rails-query-command`](https://github.com/lazaronixon/rails-query-command) gem (and on Rails 8.2+ natively).
-- Run remotely through **a command template in `$RAILS_QUERY_CMD`**, plus a small wrapper (`rq`) that makes remote quoting a non-issue.
+- Run remotely through **a command template in `$REMOTE_RAILS_QUERY`**, plus a small wrapper (`rq`) that makes remote quoting a non-issue.
 
 ## What it does
 
@@ -45,18 +45,18 @@ Or, from inside a Claude Code session:
 
 ## Remote setup
 
-Set `RAILS_QUERY_CMD` to a command template. It's the full command that runs `rails query`; `$1` marks where the query arguments go:
+Set `REMOTE_RAILS_QUERY` to a command template. It's the full command that runs `rails query`; `$1` marks where the query arguments go:
 
 ```bash
-export RAILS_QUERY_CMD='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query $1"'
+export REMOTE_RAILS_QUERY='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query $1"'
 ```
 
 Other examples:
 
 ```bash
-export RAILS_QUERY_CMD='ssh deploy@app.example.com "cd /srv/app/current && bin/rails query $1"'
-export RAILS_QUERY_CMD='kubectl exec -i deploy/web -- sh -c "bin/rails query $1"'
-export RAILS_QUERY_CMD='docker exec -i app sh -c "bin/rails query $1"'
+export REMOTE_RAILS_QUERY='ssh deploy@app.example.com "cd /srv/app/current && bin/rails query $1"'
+export REMOTE_RAILS_QUERY='kubectl exec -i deploy/web -- sh -c "bin/rails query $1"'
+export REMOTE_RAILS_QUERY='docker exec -i app sh -c "bin/rails query $1"'
 ```
 
 Export it in single quotes — in double quotes your shell expands `$1` to nothing before `rq` sees it. Keep `$1` inside the quoted command string for remote commands, so `rq` knows a remote shell will parse it too.
@@ -77,11 +77,11 @@ rq schema users
 - validates flags (`--sql`, `--db`, `--page`, `--per`, `-e`) and table names;
 - keeps **only the JSON result on stdout** — `heroku run` banners and boot logs go to stderr;
 - propagates the exit code (use `--exit-code` with `heroku run`);
-- falls back to local `bin/rails query` when `RAILS_QUERY_CMD` is unset.
+- falls back to local `bin/rails query` when `REMOTE_RAILS_QUERY` is unset.
 
 | Variable | Purpose |
 |----------|---------|
-| `RAILS_QUERY_CMD` | Command that runs `rails query`; `$1` is replaced with the query arguments (appended if absent) |
+| `REMOTE_RAILS_QUERY` | Command that runs `rails query`; `$1` is replaced with the query arguments (appended if absent) |
 | `RQ_DEBUG=1` | Print the expression and the final command to stderr |
 
 ## How triggering works
