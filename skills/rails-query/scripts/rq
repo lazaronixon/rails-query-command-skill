@@ -4,14 +4,13 @@
 # Usage: rq [--sql] [--db NAME] [--page N] [--per N] [-e ENV] (EXPRESSION | - | schema [TABLE] | models | explain EXPRESSION)
 #
 # Environment:
-#   RAILS_QUERY_REMOTE  Command template that runs `rails query`. `$1` is replaced with the query
-#                       arguments; without `$1` they are appended. Unset = run `bin/rails query` locally.
-#                       e.g. heroku run --no-tty --exit-code --app my-app "cd apps/api && bin/rails query $1"
+#   RAILS_QUERY_REMOTE  Command template that runs `rails query`. `{args}` is replaced with the query
+#                       arguments; without `{args}` they are appended. Unset = run `bin/rails query` locally.
+#                       e.g. heroku run --no-tty --exit-code --app my-app "cd apps/api && bin/rails query {args}"
+#                       `$1` is still accepted in place of `{args}` for older templates.
 #   RQ_DEBUG=1          Print the expression and final command to stderr.
 #
-# Export it in single quotes so your shell doesn't expand `$1`.
-#
-# Quoting follows where `$1` sits in the template:
+# Quoting follows where `{args}` sits in the template:
 #   inside "…" or '…'  the string is handed to a remote shell (heroku run, ssh, sh -c), so the
 #                      expression is quoted for that shell and then for the local one;
 #   unquoted           only the local shell parses it, so it is quoted once.
@@ -63,10 +62,18 @@ read_expression() {
 }
 
 template="$RAILS_QUERY_REMOTE"
-[[ "$template" == *'$1'* ]] || template="$template "'$1'
+placeholder='{args}'
+if [[ "$template" != *"$placeholder"* ]]; then
+  # Older templates used `$1`.
+  if [[ "$template" == *'$1'* ]]; then
+    placeholder='$1'
+  else
+    template="$template $placeholder"
+  fi
+fi
 
-# Quote state (none/single/double) of the shell at the first `$1` in the template.
-prefix="${template%%'$1'*}"
+# Quote state (none/single/double) of the shell at the first placeholder in the template.
+prefix="${template%%"$placeholder"*}"
 context=none
 for ((i = 0; i < ${#prefix}; i++)); do
   c="${prefix:i:1}"
@@ -125,8 +132,8 @@ case "${positional[0]:-}" in
 esac
 args+=("${flags[@]}")
 
-# Splice rather than ${template//'$1'/…}: bash 5.2 treats `\` and `&` in the replacement specially.
-command="${prefix}${args[*]}${template#*'$1'}"
+# Splice rather than ${template//"$placeholder"/…}: bash 5.2 treats `\` and `&` in the replacement specially.
+command="${prefix}${args[*]}${template#*"$placeholder"}"
 
 if [[ -n "${RQ_DEBUG:-}" ]]; then
   [[ -n "$expression" ]] && echo "rq: expression: $expression" >&2
