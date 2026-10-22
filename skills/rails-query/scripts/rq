@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rq — run `rails query` locally or on a remote defined in .rails_query_remote.yml.
+# rq — run `rails query` locally or on a remote defined in .rails_query_remote.
 #
 # Usage: rq [--remote NAME] [--debug] [--sql] [--db NAME] [--page N] [--per N] [-e ENV] (EXPRESSION | - | schema [TABLE] | models | explain EXPRESSION)
 #        rq --remotes    List the configured remotes.
@@ -8,8 +8,8 @@
 #
 # Without --remote, runs `bin/rails query` locally.
 #
-# Remotes come from .rails_query_remote.yml in the current directory or the nearest parent,
-# a flat YAML mapping of name to command:
+# Remotes come from .rails_query_remote in the current directory or the nearest parent,
+# one `name: command` per line (blank lines and lines starting with # are ignored):
 #
 #   platform_beta: heroku run --no-tty --exit-code --app platform-api-beta "cd apps/api && bin/rails query {args}"
 #
@@ -26,66 +26,32 @@ set -euo pipefail
 
 die() { echo "rq: $*" >&2; exit 2; }
 
-# Prints `name<TAB>command` for every remote in the nearest .rails_query_remote.yml.
-# Reads a flat YAML subset: `name: command` lines with plain, 'single' or "double" quoted values.
+# Prints `name<TAB>command` for every remote in the nearest .rails_query_remote.
+# Each line is `name: command`; the command is everything after the first `: `, taken literally.
 remotes() {
   local dir="$PWD" file line n=0 name value seen=" " out=""
-  until [[ -f "$dir/.rails_query_remote.yml" ]]; do
-    [[ "$dir" == / ]] && die "no .rails_query_remote.yml in $PWD or its parents"
+  until [[ -f "$dir/.rails_query_remote" ]]; do
+    [[ "$dir" == / ]] && die "no .rails_query_remote in $PWD or its parents"
     dir="$(dirname "$dir")"
   done
-  file="$dir/.rails_query_remote.yml"
+  file="$dir/.rails_query_remote"
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     ((n += 1))
     line="${line%$'\r'}"
     [[ "$line" =~ ^[[:space:]]*(#.*)?$ ]] && continue
     [[ "$line" =~ ^([A-Za-z0-9_.-]+):([[:space:]]+(.*))?$ ]] ||
-      die "$file:$n: expected 'name: command' (nesting, lists and quoted names aren't supported)"
+      die "$file:$n: expected 'name: command'"
     name="${BASH_REMATCH[1]}"
     value="${BASH_REMATCH[3]}"
     value="${value%"${value##*[![:space:]]}"}"
     [[ -n "$value" ]] || die "$file:$n: remote $name has no command"
     [[ "$seen" != *" $name "* ]] || die "$file:$n: remote $name is defined twice"
     seen+="$name "
-    value="$(unquote "$value")" || die "$file:$n: $value"
-    [[ -n "$value" ]] || die "$file:$n: remote $name has no command"
     [[ "$value" != *$'\t'* ]] || die "$file:$n: remote $name has a tab in its command"
     out+="$name"$'\t'"$value"$'\n'
   done <"$file"
   printf '%s' "$out"
-}
-
-# Decodes one YAML scalar. On failure prints the reason and returns 1.
-unquote() {
-  local v="$1" inner out="" i c
-  case "$v" in
-    \'*)
-      [[ "$v" == ?*\' ]] && inner="${v:1:${#v}-2}" && [[ "${inner//\'\'/}" != *\'* ]] ||
-        { echo "invalid single-quoted value (double any ' inside it; comments after a value aren't supported)"; return 1; }
-      printf '%s' "${inner//\'\'/\'}" ;;
-    \"*)
-      [[ "$v" =~ ^\"(([^\"\\]|\\.)*)\"$ ]] ||
-        { echo "invalid double-quoted value (escape any \" inside it; comments after a value aren't supported)"; return 1; }
-      inner="${BASH_REMATCH[1]}"
-      for ((i = 0; i < ${#inner}; i++)); do
-        c="${inner:i:1}"
-        if [[ "$c" == \\ ]]; then
-          ((i += 1)); c="${inner:i:1}"
-          [[ "$c" == [\"\\/] ]] || { echo "only \\\" \\\\ and \\/ escapes are supported in double quotes"; return 1; }
-        fi
-        out+="$c"
-      done
-      printf '%s' "$out" ;;
-    [\[\{\&\*\!\|\>\%\@\`]*|"- "*|"? "*)
-      echo "a value starting with ${v:0:1} must be quoted"; return 1 ;;
-    *" #"*)
-      echo "comments after a value aren't supported (quote the value if # is part of the command)"; return 1 ;;
-    *": "*)
-      echo "a value containing ': ' must be quoted"; return 1 ;;
-    *)
-      printf '%s' "$v" ;;
-  esac
 }
 
 safe() {

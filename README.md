@@ -5,7 +5,7 @@ A Claude Code plugin that teaches Claude to answer data questions about a Rails 
 It's a fork of [lewispb/rails-query-skill](https://github.com/lewispb/rails-query-skill), adapted to:
 
 - Work on **Rails 7.2, 8.0 and 8.1** via the [`rails-query-command`](https://github.com/lazaronixon/rails-query-command) gem (and on Rails 8.2+ natively).
-- Run remotely through **named command templates in your app's `.rails_query_remote.yml`**, plus a small wrapper (`rq`) that makes remote quoting a non-issue.
+- Run remotely through **named command templates in your app's `.rails_query_remote`**, plus a small wrapper (`rq`) that makes remote quoting a non-issue.
 
 ## What it does
 
@@ -45,9 +45,9 @@ Or, from inside a Claude Code session:
 
 ## Remote setup
 
-Create `.rails_query_remote.yml` at the root of your app's repository, mapping remote names to commands. Each command is the full command that runs `rails query`, taken literally; `{args}` marks where the query arguments go:
+Create `.rails_query_remote` at the root of your app's repository, with one `name: command` per line. Each command is the full command that runs `rails query`, taken literally (everything after the first `: `); `{args}` marks where the query arguments go:
 
-```yaml
+```
 # Heroku (monorepo, app in apps/api)
 platform_production: heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query {args}"
 platform_beta: heroku run --no-tty --exit-code --app platform-api-beta "cd apps/api && bin/rails query {args}"
@@ -58,7 +58,7 @@ web_k8s: kubectl exec -i deploy/web -- sh -c "bin/rails query {args}"
 web_docker: docker exec -i app sh -c "bin/rails query {args}"
 ```
 
-If a command starts with a quote or contains `: ` or ` #`, wrap it in YAML single quotes (doubling any `'` inside). `rq` finds the file in the current directory or any parent and reads it itself, so it needs nothing beyond bash. It understands flat `name: command` entries only: no nesting, lists, multi-line values or comments after a value. Commit it to share remotes with your team, or add it to `.gitignore` to keep them personal.
+Blank lines and lines starting with `#` are ignored. `rq` finds the file in the current directory or any parent and reads it itself, so it needs nothing beyond bash. Commit it to share remotes with your team, or add it to `.gitignore` to keep them personal.
 
 Name remotes after the app and environment so Claude can match "in beta" or "in production" to the right one. Keep `{args}` inside the quoted command string for remote commands, so `rq` knows a remote shell will parse it too.
 
@@ -81,7 +81,7 @@ rq -r platform_beta schema users
 
 | Option | Purpose |
 |--------|---------|
-| `-r`, `--remote NAME` | Run on the named remote from `.rails_query_remote.yml` |
+| `-r`, `--remote NAME` | Run on the named remote from `.rails_query_remote` |
 | `--remotes` | List the configured remotes |
 | `--debug` | Print the expression and the final command to stderr |
 
