@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# rq — run `rails query` locally or through the command template in $REMOTE_RAILS_QUERY.
+# rq — run `rails query` locally or through the command template in $RAILS_QUERY_REMOTE.
 #
 # Usage: rq [--sql] [--db NAME] [--page N] [--per N] [-e ENV] (EXPRESSION | - | schema [TABLE] | models | explain EXPRESSION)
 #
 # Environment:
-#   REMOTE_RAILS_QUERY  Command template that runs `rails query`. `$1` is replaced with the query
+#   RAILS_QUERY_REMOTE  Command template that runs `rails query`. `$1` is replaced with the query
 #                       arguments; without `$1` they are appended. Unset = run `bin/rails query` locally.
 #                       e.g. heroku run --no-tty --exit-code --app my-app "cd apps/api && bin/rails query $1"
 #   RQ_DEBUG=1          Print the expression and final command to stderr.
@@ -21,7 +21,7 @@ set -euo pipefail
 
 die() { echo "rq: $*" >&2; exit 2; }
 
-if [[ -z "${REMOTE_RAILS_QUERY:-}" ]]; then
+if [[ -z "${RAILS_QUERY_REMOTE:-}" ]]; then
   exec bin/rails query "$@"
 fi
 
@@ -62,7 +62,7 @@ read_expression() {
   fi
 }
 
-template="$REMOTE_RAILS_QUERY"
+template="$RAILS_QUERY_REMOTE"
 [[ "$template" == *'$1'* ]] || template="$template "'$1'
 
 # Quote state (none/single/double) of the shell at the first `$1` in the template.

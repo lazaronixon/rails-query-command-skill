@@ -8,7 +8,7 @@
     {
       "name": "rails-query-command",
       "source": "./",
-      "description": "Run read-only queries against a Rails app's database via `rails query` — ActiveRecord or SQL, schema introspection, EXPLAIN, local or remote through any command template in $REMOTE_RAILS_QUERY."
+      "description": "Run read-only queries against a Rails app's database via `rails query` — ActiveRecord or SQL, schema introspection, EXPLAIN, local or remote through any command template in $RAILS_QUERY_REMOTE."
     }
   ]
 }

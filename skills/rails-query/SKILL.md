@@ -5,7 +5,7 @@ description: |
   (built into Rails 8.2+, backported to Rails 7.2/8.0/8.1 by the `rails-query-command` gem):
   counts, lookups, "how many X", ad-hoc investigation, schema exploration, EXPLAIN plans,
   and aggregates — whether locally or against a deployed environment reached through the
-  command in `$REMOTE_RAILS_QUERY` (Heroku, SSH, docker, kubectl, …). Trigger
+  command in `$RAILS_QUERY_REMOTE` (Heroku, SSH, docker, kubectl, …). Trigger
   broadly whenever the user asks for data from a Rails app's database, mentions
   `rails query` / `bin/rails query` / `rq` / `rails-query-command`, asks to inspect schema,
   tables, or models, wants to run SQL or ActiveRecord against the database, needs an EXPLAIN
@@ -28,9 +28,9 @@ Prefer it over a console, a script, or SSH for any data question. One invocation
 ### 1. Know where you're running
 
 - **Local** (`bin/rails query`) — development, tests, or anywhere you have the app checked out.
-- **Remote** (`rq`) — the deployed app, reached through the command template in `$REMOTE_RAILS_QUERY`. `rq` is the wrapper script at `scripts/rq` in this skill's directory (`${CLAUDE_PLUGIN_ROOT}/skills/rails-query/scripts/rq`). Call it by its full path.
+- **Remote** (`rq`) — the deployed app, reached through the command template in `$RAILS_QUERY_REMOTE`. `rq` is the wrapper script at `scripts/rq` in this skill's directory (`${CLAUDE_PLUGIN_ROOT}/skills/rails-query/scripts/rq`). Call it by its full path.
 
-Check `echo "$REMOTE_RAILS_QUERY"`. If it's set and the user is asking about a deployed environment (production, staging, "live", the app name in the template), use `rq`. If it's empty, use `bin/rails query` — or, if the user wants remote data, ask them to set it up (see "Remote setup").
+Check `echo "$RAILS_QUERY_REMOTE"`. If it's set and the user is asking about a deployed environment (production, staging, "live", the app name in the template), use `rq`. If it's empty, use `bin/rails query` — or, if the user wants remote data, ask them to set it up (see "Remote setup").
 
 If `bin/rails query` says `Could not find command "query"`, the app is older than Rails 8.2 and doesn't have the gem — check `Gemfile.lock` for `rails-query-command` and suggest adding it.
 
@@ -124,16 +124,16 @@ Always order explicitly when paginating — without `ORDER BY`, page 2 can overl
 
 ## Remote setup
 
-`$REMOTE_RAILS_QUERY` is the full command that runs `rails query` on the deployed app. `rq` puts the query arguments (expression, subcommand, flags) where `$1` is. Without `$1`, they're appended to the end.
+`$RAILS_QUERY_REMOTE` is the full command that runs `rails query` on the deployed app. `rq` puts the query arguments (expression, subcommand, flags) where `$1` is. Without `$1`, they're appended to the end.
 
 ```bash
 # Heroku (monorepo, app in apps/api)
-export REMOTE_RAILS_QUERY='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query $1"'
+export RAILS_QUERY_REMOTE='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query $1"'
 
 # Others
-export REMOTE_RAILS_QUERY='ssh deploy@app.example.com "cd /srv/app/current && bin/rails query $1"'
-export REMOTE_RAILS_QUERY='kubectl exec -i deploy/web -- sh -c "bin/rails query $1"'
-export REMOTE_RAILS_QUERY='docker exec -i app sh -c "bin/rails query $1"'
+export RAILS_QUERY_REMOTE='ssh deploy@app.example.com "cd /srv/app/current && bin/rails query $1"'
+export RAILS_QUERY_REMOTE='kubectl exec -i deploy/web -- sh -c "bin/rails query $1"'
+export RAILS_QUERY_REMOTE='docker exec -i app sh -c "bin/rails query $1"'
 ```
 
 Export it in single quotes — in double quotes your shell expands `$1` to nothing before `rq` sees it. Where `$1` sits decides the quoting. Inside `"…"` or `'…'`, `rq` assumes the string goes to a remote shell (`heroku run`, `ssh`, `sh -c`) and quotes for that shell and for yours. Unquoted, only your local shell parses it. So for remote commands, keep `$1` inside the quoted command string. Use `--no-tty` and `--exit-code` with `heroku run` so output isn't mangled and failures propagate.
@@ -193,7 +193,7 @@ bin/rails query models | jq '.[] | select(.table_name == "accounts") | .model'
 | `SyntaxError: unexpected *` | SQL passed without `--sql` | Add `--sql` |
 | `Could not find command "query"` | Rails < 8.2 without the gem, or the remote isn't deployed with it yet | Add `gem "rails-query-command"` and deploy |
 | `rq: no JSON in output` | Boot crash, wrong directory, or runner error | Read the stderr above it; re-run with `RQ_DEBUG=1` to see the exact command |
-| `bin/rails: No such file or directory` remotely | Wrong `cd` in `$REMOTE_RAILS_QUERY`, or no binstub | Fix the `cd`, or use `rails query $1` |
+| `bin/rails: No such file or directory` remotely | Wrong `cd` in `$RAILS_QUERY_REMOTE`, or no binstub | Fix the `cd`, or use `rails query $1` |
 | Expression arrives mangled or `syntax error near unexpected token` | `$1` isn't inside the quoted remote command string | Move `$1` inside the `"…"` passed to the remote shell |
 | `ActiveRecord::ReadOnlyError` | Expression tried to write | Rework to be read-only |
 | `LIMIT 101` in `meta.sql` unexpectedly | Default pagination probe | Expected — drives `meta.has_more` |
