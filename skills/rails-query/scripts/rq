@@ -4,12 +4,14 @@
 # Usage: rq [--sql] [--db NAME] [--page N] [--per N] [-e ENV] (EXPRESSION | - | schema [TABLE] | models | explain EXPRESSION)
 #
 # Environment:
-#   RAILS_QUERY_CMD  Command template that runs `rails query`. `%s` is replaced with the query
-#                    arguments; without `%s` they are appended. Unset = run `bin/rails query` locally.
-#                    e.g. heroku run --no-tty --exit-code --app my-app "cd apps/api && bin/rails query %s"
+#   RAILS_QUERY_CMD  Command template that runs `rails query`. `$1` is replaced with the query
+#                    arguments; without `$1` they are appended. Unset = run `bin/rails query` locally.
+#                    e.g. heroku run --no-tty --exit-code --app my-app "cd apps/api && bin/rails query $1"
 #   RQ_DEBUG=1       Print the expression and final command to stderr.
 #
-# Quoting follows where `%s` sits in the template:
+# Export it in single quotes so your shell doesn't expand `$1`.
+#
+# Quoting follows where `$1` sits in the template:
 #   inside "…" or '…'  the string is handed to a remote shell (heroku run, ssh, sh -c), so the
 #                      expression is quoted for that shell and then for the local one;
 #   unquoted           only the local shell parses it, so it is quoted once.
@@ -61,10 +63,10 @@ read_expression() {
 }
 
 template="$RAILS_QUERY_CMD"
-[[ "$template" == *"%s"* ]] || template="$template %s"
+[[ "$template" == *'$1'* ]] || template="$template "'$1'
 
-# Quote state (none/single/double) of the shell at the first `%s` in the template.
-prefix="${template%%"%s"*}"
+# Quote state (none/single/double) of the shell at the first `$1` in the template.
+prefix="${template%%'$1'*}"
 context=none
 for ((i = 0; i < ${#prefix}; i++)); do
   c="${prefix:i:1}"
@@ -123,8 +125,8 @@ case "${positional[0]:-}" in
 esac
 args+=("${flags[@]}")
 
-# Splice rather than ${template//"%s"/…}: bash 5.2 treats `\` and `&` in the replacement specially.
-command="${prefix}${args[*]}${template#*"%s"}"
+# Splice rather than ${template//'$1'/…}: bash 5.2 treats `\` and `&` in the replacement specially.
+command="${prefix}${args[*]}${template#*'$1'}"
 
 if [[ -n "${RQ_DEBUG:-}" ]]; then
   [[ -n "$expression" ]] && echo "rq: expression: $expression" >&2

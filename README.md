@@ -45,21 +45,21 @@ Or, from inside a Claude Code session:
 
 ## Remote setup
 
-Set `RAILS_QUERY_CMD` to a command template. It's the full command that runs `rails query`; `%s` marks where the query arguments go:
+Set `RAILS_QUERY_CMD` to a command template. It's the full command that runs `rails query`; `$1` marks where the query arguments go:
 
 ```bash
-export RAILS_QUERY_CMD='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query %s"'
+export RAILS_QUERY_CMD='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query $1"'
 ```
 
 Other examples:
 
 ```bash
-export RAILS_QUERY_CMD='ssh deploy@app.example.com "cd /srv/app/current && bin/rails query %s"'
-export RAILS_QUERY_CMD='kubectl exec -i deploy/web -- sh -c "bin/rails query %s"'
-export RAILS_QUERY_CMD='docker exec -i app sh -c "bin/rails query %s"'
+export RAILS_QUERY_CMD='ssh deploy@app.example.com "cd /srv/app/current && bin/rails query $1"'
+export RAILS_QUERY_CMD='kubectl exec -i deploy/web -- sh -c "bin/rails query $1"'
+export RAILS_QUERY_CMD='docker exec -i app sh -c "bin/rails query $1"'
 ```
 
-Keep `%s` inside the quoted command string for remote commands, so `rq` knows a remote shell will parse it too.
+Export it in single quotes — in double quotes your shell expands `$1` to nothing before `rq` sees it. Keep `$1` inside the quoted command string for remote commands, so `rq` knows a remote shell will parse it too.
 
 Put it in your shell profile, a `.envrc` (direnv), or Claude Code's `settings.json` `env` block so Claude sees it.
 
@@ -73,7 +73,7 @@ rq schema users
 
 `rq` (`skills/rails-query/scripts/rq`):
 
-- **quotes the expression for every layer**: your shell, and the remote shell when `%s` sits inside the quoted command string. So parens, `*`, quotes, `$`, `&` and newlines arrive intact;
+- **quotes the expression for every layer**: your shell, and the remote shell when `$1` sits inside the quoted command string. So parens, `*`, quotes, `$`, `&` and newlines arrive intact;
 - validates flags (`--sql`, `--db`, `--page`, `--per`, `-e`) and table names;
 - keeps **only the JSON result on stdout** — `heroku run` banners and boot logs go to stderr;
 - propagates the exit code (use `--exit-code` with `heroku run`);
@@ -81,7 +81,7 @@ rq schema users
 
 | Variable | Purpose |
 |----------|---------|
-| `RAILS_QUERY_CMD` | Command that runs `rails query`; `%s` is replaced with the query arguments (appended if absent) |
+| `RAILS_QUERY_CMD` | Command that runs `rails query`; `$1` is replaced with the query arguments (appended if absent) |
 | `RQ_DEBUG=1` | Print the expression and the final command to stderr |
 
 ## How triggering works

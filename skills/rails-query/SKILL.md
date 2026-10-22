@@ -124,19 +124,19 @@ Always order explicitly when paginating — without `ORDER BY`, page 2 can overl
 
 ## Remote setup
 
-`$RAILS_QUERY_CMD` is the full command that runs `rails query` on the deployed app. `rq` puts the query arguments (expression, subcommand, flags) where `%s` is. Without `%s`, they're appended to the end.
+`$RAILS_QUERY_CMD` is the full command that runs `rails query` on the deployed app. `rq` puts the query arguments (expression, subcommand, flags) where `$1` is. Without `$1`, they're appended to the end.
 
 ```bash
 # Heroku (monorepo, app in apps/api)
-export RAILS_QUERY_CMD='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query %s"'
+export RAILS_QUERY_CMD='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query $1"'
 
 # Others
-export RAILS_QUERY_CMD='ssh deploy@app.example.com "cd /srv/app/current && bin/rails query %s"'
-export RAILS_QUERY_CMD='kubectl exec -i deploy/web -- sh -c "bin/rails query %s"'
-export RAILS_QUERY_CMD='docker exec -i app sh -c "bin/rails query %s"'
+export RAILS_QUERY_CMD='ssh deploy@app.example.com "cd /srv/app/current && bin/rails query $1"'
+export RAILS_QUERY_CMD='kubectl exec -i deploy/web -- sh -c "bin/rails query $1"'
+export RAILS_QUERY_CMD='docker exec -i app sh -c "bin/rails query $1"'
 ```
 
-Where `%s` sits decides the quoting. Inside `"…"` or `'…'`, `rq` assumes the string goes to a remote shell (`heroku run`, `ssh`, `sh -c`) and quotes for that shell and for yours. Unquoted, only your local shell parses it. So for remote commands, keep `%s` inside the quoted command string. Use `--no-tty` and `--exit-code` with `heroku run` so output isn't mangled and failures propagate.
+Export it in single quotes — in double quotes your shell expands `$1` to nothing before `rq` sees it. Where `$1` sits decides the quoting. Inside `"…"` or `'…'`, `rq` assumes the string goes to a remote shell (`heroku run`, `ssh`, `sh -c`) and quotes for that shell and for yours. Unquoted, only your local shell parses it. So for remote commands, keep `$1` inside the quoted command string. Use `--no-tty` and `--exit-code` with `heroku run` so output isn't mangled and failures propagate.
 
 Then:
 
@@ -193,8 +193,8 @@ bin/rails query models | jq '.[] | select(.table_name == "accounts") | .model'
 | `SyntaxError: unexpected *` | SQL passed without `--sql` | Add `--sql` |
 | `Could not find command "query"` | Rails < 8.2 without the gem, or the remote isn't deployed with it yet | Add `gem "rails-query-command"` and deploy |
 | `rq: no JSON in output` | Boot crash, wrong directory, or runner error | Read the stderr above it; re-run with `RQ_DEBUG=1` to see the exact command |
-| `bin/rails: No such file or directory` remotely | Wrong `cd` in `$RAILS_QUERY_CMD`, or no binstub | Fix the `cd`, or use `rails query %s` |
-| Expression arrives mangled or `syntax error near unexpected token` | `%s` isn't inside the quoted remote command string | Move `%s` inside the `"…"` passed to the remote shell |
+| `bin/rails: No such file or directory` remotely | Wrong `cd` in `$RAILS_QUERY_CMD`, or no binstub | Fix the `cd`, or use `rails query $1` |
+| Expression arrives mangled or `syntax error near unexpected token` | `$1` isn't inside the quoted remote command string | Move `$1` inside the `"…"` passed to the remote shell |
 | `ActiveRecord::ReadOnlyError` | Expression tried to write | Rework to be read-only |
 | `LIMIT 101` in `meta.sql` unexpectedly | Default pagination probe | Expected — drives `meta.has_more` |
 | `has_more: true` but you wanted all rows | Default per-page hit | Raise `--per` (max 10000) or paginate with `--page` |
