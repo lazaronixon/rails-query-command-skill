@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-# rq — run `rails query` locally or through the command template in $RAILS_QUERY_REMOTE.
+# rq — run `rails query` locally or on a remote defined in .rails_query_remote.yml.
 #
-# Usage: rq [--sql] [--db NAME] [--page N] [--per N] [-e ENV] (EXPRESSION | - | schema [TABLE] | models | explain EXPRESSION)
+# Usage: rq [--remote NAME] [--debug] [--sql] [--db NAME] [--page N] [--per N] [-e ENV] (EXPRESSION | - | schema [TABLE] | models | explain EXPRESSION)
+#        rq --remotes    List the configured remotes.
 #
-# Environment:
-#   RAILS_QUERY_REMOTE  Command template that runs `rails query`. `{args}` is replaced with the query
-#                       arguments; without `{args}` they are appended. Unset = run `bin/rails query` locally.
-#                       e.g. heroku run --no-tty --exit-code --app my-app "cd apps/api && bin/rails query {args}"
-#                       `$1` is still accepted in place of `{args}` for older templates.
-#   RQ_DEBUG=1          Print the expression and final command to stderr.
+# --debug prints the expression and final command to stderr.
 #
-# Quoting follows where `{args}` sits in the template:
+# Without --remote, runs `bin/rails query` locally.
+#
+# Remotes come from .rails_query_remote.yml in the current directory or the nearest parent,
+# a flat YAML mapping of name to command:
+#
+#   platform_beta: heroku run --no-tty --exit-code --app platform-api-beta "cd apps/api && bin/rails query {args}"
+#
+# The command is taken literally. `{args}` is replaced with the query arguments; without `{args}`
+# they are appended. `$1` is still accepted in place of `{args}` for older templates.
+#
+# Quoting follows where `{args}` sits in the command:
 #   inside "…" or '…'  the string is handed to a remote shell (heroku run, ssh, sh -c), so the
 #                      expression is quoted for that shell and then for the local one;
 #   unquoted           only the local shell parses it, so it is quoted once.
@@ -20,20 +26,90 @@ set -euo pipefail
 
 die() { echo "rq: $*" >&2; exit 2; }
 
-if [[ -z "${RAILS_QUERY_REMOTE:-}" ]]; then
-  exec bin/rails query "$@"
-fi
+# Prints `name<TAB>command` for every remote in the nearest .rails_query_remote.yml.
+# Reads a flat YAML subset: `name: command` lines with plain, 'single' or "double" quoted values.
+remotes() {
+  local dir="$PWD" file line n=0 name value seen=" " out=""
+  until [[ -f "$dir/.rails_query_remote.yml" ]]; do
+    [[ "$dir" == / ]] && die "no .rails_query_remote.yml in $PWD or its parents"
+    dir="$(dirname "$dir")"
+  done
+  file="$dir/.rails_query_remote.yml"
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    ((n += 1))
+    line="${line%$'\r'}"
+    [[ "$line" =~ ^[[:space:]]*(#.*)?$ ]] && continue
+    [[ "$line" =~ ^([A-Za-z0-9_.-]+):([[:space:]]+(.*))?$ ]] ||
+      die "$file:$n: expected 'name: command' (nesting, lists and quoted names aren't supported)"
+    name="${BASH_REMATCH[1]}"
+    value="${BASH_REMATCH[3]}"
+    value="${value%"${value##*[![:space:]]}"}"
+    [[ -n "$value" ]] || die "$file:$n: remote $name has no command"
+    [[ "$seen" != *" $name "* ]] || die "$file:$n: remote $name is defined twice"
+    seen+="$name "
+    value="$(unquote "$value")" || die "$file:$n: $value"
+    [[ -n "$value" ]] || die "$file:$n: remote $name has no command"
+    [[ "$value" != *$'\t'* ]] || die "$file:$n: remote $name has a tab in its command"
+    out+="$name"$'\t'"$value"$'\n'
+  done <"$file"
+  printf '%s' "$out"
+}
+
+# Decodes one YAML scalar. On failure prints the reason and returns 1.
+unquote() {
+  local v="$1" inner out="" i c
+  case "$v" in
+    \'*)
+      [[ "$v" == ?*\' ]] && inner="${v:1:${#v}-2}" && [[ "${inner//\'\'/}" != *\'* ]] ||
+        { echo "invalid single-quoted value (double any ' inside it; comments after a value aren't supported)"; return 1; }
+      printf '%s' "${inner//\'\'/\'}" ;;
+    \"*)
+      [[ "$v" =~ ^\"(([^\"\\]|\\.)*)\"$ ]] ||
+        { echo "invalid double-quoted value (escape any \" inside it; comments after a value aren't supported)"; return 1; }
+      inner="${BASH_REMATCH[1]}"
+      for ((i = 0; i < ${#inner}; i++)); do
+        c="${inner:i:1}"
+        if [[ "$c" == \\ ]]; then
+          ((i += 1)); c="${inner:i:1}"
+          [[ "$c" == [\"\\/] ]] || { echo "only \\\" \\\\ and \\/ escapes are supported in double quotes"; return 1; }
+        fi
+        out+="$c"
+      done
+      printf '%s' "$out" ;;
+    [\[\{\&\*\!\|\>\%\@\`]*|"- "*|"? "*)
+      echo "a value starting with ${v:0:1} must be quoted"; return 1 ;;
+    *" #"*)
+      echo "comments after a value aren't supported (quote the value if # is part of the command)"; return 1 ;;
+    *": "*)
+      echo "a value containing ': ' must be quoted"; return 1 ;;
+    *)
+      printf '%s' "$v" ;;
+  esac
+}
 
 safe() {
   [[ "$1" =~ ^[A-Za-z0-9_.-]+$ ]] || die "invalid value '$1' (allowed: letters, digits, _ . -)"
   printf '%s' "$1"
 }
 
+original=("$@")
+remote=""
+debug=""
 flags=()
 positional=()
 
 while (($#)); do
   case "$1" in
+    --remotes)
+      remotes; exit ;;
+    -r|--remote)
+      (($# >= 2)) || die "$1 needs a value"
+      remote="$(safe "$2")"; shift 2 ;;
+    --remote=*)
+      remote="$(safe "${1#*=}")"; shift ;;
+    --debug)
+      debug=1; shift ;;
     --sql)
       flags+=(--sql); shift ;;
     --db|--database|--page|--per|-e|--environment)
@@ -61,7 +137,12 @@ read_expression() {
   fi
 }
 
-template="$RAILS_QUERY_REMOTE"
+[[ -n "$remote" ]] || exec bin/rails query "${original[@]}"
+
+table="$(remotes)"
+template="$(awk -F '\t' -v name="$remote" '$1 == name { sub(/^[^\t]*\t/, ""); print; exit }' <<<"$table")"
+[[ -n "$template" ]] || die "unknown remote '$remote' (configured: $(cut -f1 <<<"$table" | paste -sd ' '))"
+
 placeholder='{args}'
 if [[ "$template" != *"$placeholder"* ]]; then
   # Older templates used `$1`.
@@ -135,7 +216,7 @@ args+=("${flags[@]}")
 # Splice rather than ${template//"$placeholder"/…}: bash 5.2 treats `\` and `&` in the replacement specially.
 command="${prefix}${args[*]}${template#*"$placeholder"}"
 
-if [[ -n "${RQ_DEBUG:-}" ]]; then
+if [[ -n "$debug" ]]; then
   [[ -n "$expression" ]] && echo "rq: expression: $expression" >&2
   echo "rq: command: $command" >&2
 fi

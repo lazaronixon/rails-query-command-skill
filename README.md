@@ -1,11 +1,11 @@
 # rails-query-command
 
-A Claude Code plugin that teaches Claude to answer data questions about a Rails application using the [`rails query`](https://github.com/rails/rails/pull/57156) command — locally, or against a deployed environment through **any command you configure in an env var** (Heroku, SSH, docker, kubectl, …).
+A Claude Code plugin that teaches Claude to answer data questions about a Rails application using the [`rails query`](https://github.com/rails/rails/pull/57156) command — locally, or against a deployed environment through **named remotes you configure in a config file** (Heroku, SSH, docker, kubectl, …).
 
 It's a fork of [lewispb/rails-query-skill](https://github.com/lewispb/rails-query-skill), adapted to:
 
 - Work on **Rails 7.2, 8.0 and 8.1** via the [`rails-query-command`](https://github.com/lazaronixon/rails-query-command) gem (and on Rails 8.2+ natively).
-- Run remotely through **a command template in `$RAILS_QUERY_REMOTE`**, plus a small wrapper (`rq`) that makes remote quoting a non-issue.
+- Run remotely through **named command templates in your app's `.rails_query_remote.yml`**, plus a small wrapper (`rq`) that makes remote quoting a non-issue.
 
 ## What it does
 
@@ -45,30 +45,30 @@ Or, from inside a Claude Code session:
 
 ## Remote setup
 
-Set `RAILS_QUERY_REMOTE` to a command template. It's the full command that runs `rails query`; `{args}` marks where the query arguments go:
+Create `.rails_query_remote.yml` at the root of your app's repository, mapping remote names to commands. Each command is the full command that runs `rails query`, taken literally; `{args}` marks where the query arguments go:
 
-```bash
-export RAILS_QUERY_REMOTE='heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query {args}"'
+```yaml
+# Heroku (monorepo, app in apps/api)
+platform_production: heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query {args}"
+platform_beta: heroku run --no-tty --exit-code --app platform-api-beta "cd apps/api && bin/rails query {args}"
+
+# Others
+web_ssh: ssh deploy@app.example.com "cd /srv/app/current && bin/rails query {args}"
+web_k8s: kubectl exec -i deploy/web -- sh -c "bin/rails query {args}"
+web_docker: docker exec -i app sh -c "bin/rails query {args}"
 ```
 
-Other examples:
+If a command starts with a quote or contains `: ` or ` #`, wrap it in YAML single quotes (doubling any `'` inside). `rq` finds the file in the current directory or any parent and reads it itself, so it needs nothing beyond bash. It understands flat `name: command` entries only: no nesting, lists, multi-line values or comments after a value. Commit it to share remotes with your team, or add it to `.gitignore` to keep them personal.
 
-```bash
-export RAILS_QUERY_REMOTE='ssh deploy@app.example.com "cd /srv/app/current && bin/rails query {args}"'
-export RAILS_QUERY_REMOTE='kubectl exec -i deploy/web -- sh -c "bin/rails query {args}"'
-export RAILS_QUERY_REMOTE='docker exec -i app sh -c "bin/rails query {args}"'
-```
-
-Single quotes around the whole template are simplest, since the command inside usually has double quotes. Keep `{args}` inside the quoted command string for remote commands, so `rq` knows a remote shell will parse it too.
-
-Put it in your shell profile, a `.envrc` (direnv), or Claude Code's `settings.json` `env` block so Claude sees it.
+Name remotes after the app and environment so Claude can match "in beta" or "in production" to the right one. Keep `{args}` inside the quoted command string for remote commands, so `rq` knows a remote shell will parse it too.
 
 Claude then runs queries through the bundled wrapper:
 
 ```bash
-rq 'User.count'
-rq --sql 'SELECT COUNT(*) FROM users'
-rq schema users
+rq --remotes                                   # list configured remotes
+rq --remote platform_beta 'User.count'
+rq -r platform_production --sql 'SELECT COUNT(*) FROM users'
+rq -r platform_beta schema users
 ```
 
 `rq` (`skills/rails-query/scripts/rq`):
@@ -77,12 +77,13 @@ rq schema users
 - validates flags (`--sql`, `--db`, `--page`, `--per`, `-e`) and table names;
 - keeps **only the JSON result on stdout** — `heroku run` banners and boot logs go to stderr;
 - propagates the exit code (use `--exit-code` with `heroku run`);
-- falls back to local `bin/rails query` when `RAILS_QUERY_REMOTE` is unset.
+- runs local `bin/rails query` when no `--remote` is given.
 
-| Variable | Purpose |
-|----------|---------|
-| `RAILS_QUERY_REMOTE` | Command that runs `rails query`; `{args}` is replaced with the query arguments (appended if absent) |
-| `RQ_DEBUG=1` | Print the expression and the final command to stderr |
+| Option | Purpose |
+|--------|---------|
+| `-r`, `--remote NAME` | Run on the named remote from `.rails_query_remote.yml` |
+| `--remotes` | List the configured remotes |
+| `--debug` | Print the expression and the final command to stderr |
 
 ## How triggering works
 
