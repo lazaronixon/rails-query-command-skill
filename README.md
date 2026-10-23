@@ -41,49 +41,46 @@ Or, from inside a Claude Code session:
   gem "rails-query-command"
   ```
 
-- **`jq`** on your PATH for the skill's extraction patterns (`jq '.rows[0][0]'`).
-
 ## Remote setup
 
-Create `.rails_query_remote` at the root of your app's repository, with one `name: command` per line. Each command is the full command that runs `rails query`, taken literally (everything after the first `: `); `{args}` marks where the query arguments go:
+Create `.rails_query_remote` at the root of your project (the Rails app, next to `bin/rails`), with one `name: command` per line. Each project has its own. Each command is the full command that runs `rails query`, taken literally (everything after the first `: `); `{args}` marks where the query arguments go:
 
 ```
 # Heroku (monorepo, app in apps/api)
-platform_production: heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query {args}"
-platform_beta: heroku run --no-tty --exit-code --app platform-api-beta "cd apps/api && bin/rails query {args}"
+production: heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query {args}"
+beta: heroku run --no-tty --exit-code --app platform-api-beta "cd apps/api && bin/rails query {args}"
 
-# Others
-web_ssh: ssh deploy@app.example.com "cd /srv/app/current && bin/rails query {args}"
-web_k8s: kubectl exec -i deploy/web -- sh -c "bin/rails query {args}"
-web_docker: docker exec -i app sh -c "bin/rails query {args}"
+# Other runners — name each after its environment (production, staging, …)
+ssh: ssh -n deploy@app.example.com "cd /srv/app/current && bin/rails query {args}"
+k8s: kubectl exec deploy/web -- sh -c "bin/rails query {args}"
+docker: docker exec app sh -c "bin/rails query {args}"
 ```
 
-Blank lines and lines starting with `#` are ignored. `rq` finds the file in the current directory or any parent and reads it itself, so it needs nothing beyond bash. Commit it to share remotes with your team, or add it to `.gitignore` to keep them personal.
+Blank lines and lines starting with `#` are ignored. `rq` reads the file from the current directory itself, so it needs nothing beyond bash. Commit it to share remotes with your team, or add it to `.gitignore` to keep them personal.
 
-Name remotes after the app and environment so Claude can match "in beta" or "in production" to the right one. Keep `{args}` inside the quoted command string for remote commands, so `rq` knows a remote shell will parse it too.
+Name remotes after the environment (`production`, `beta`) so Claude can match "in beta" or "in production" to the right one. Keep `{args}` inside the quoted command string for remote commands, so `rq` knows a remote shell will parse it too.
 
 Claude then runs queries through the bundled wrapper:
 
 ```bash
-rq --remotes                                   # list configured remotes
-rq --remote platform_beta 'User.count'
-rq -r platform_production --sql 'SELECT COUNT(*) FROM users'
-rq -r platform_beta schema users
+rq --remotes # list configured remotes
+rq --remote beta 'User.count'
+rq -r production --sql 'SELECT COUNT(*) FROM users'
+rq -r beta schema users
 ```
 
 `rq` (`skills/rails-query/scripts/rq`):
 
 - **quotes the expression for every layer**: your shell, and the remote shell when `{args}` sits inside the quoted command string. So parens, `*`, quotes, `$`, `&` and newlines arrive intact;
 - validates flags (`--sql`, `--db`, `--page`, `--per`, `-e`) and table names;
-- keeps **only the JSON result on stdout** — `heroku run` banners and boot logs go to stderr;
-- propagates the exit code (use `--exit-code` with `heroku run`);
+- prints everything the remote printed (banners, boot logs, the result) once it exits: to stdout on success, to stderr on failure;
+- exits with the remote command's status (use `--exit-code` with `heroku run`);
 - runs local `bin/rails query` when no `--remote` is given.
 
 | Option | Purpose |
 |--------|---------|
 | `-r`, `--remote NAME` | Run on the named remote from `.rails_query_remote` |
 | `--remotes` | List the configured remotes |
-| `--debug` | Print the expression and the final command to stderr |
 
 ## How triggering works
 

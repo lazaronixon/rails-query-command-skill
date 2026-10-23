@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
 # rq — run `rails query` locally or on a remote defined in .rails_query_remote.
 #
-# Usage: rq [--remote NAME] [--debug] [--sql] [--db NAME] [--page N] [--per N] [-e ENV] (EXPRESSION | - | schema [TABLE] | models | explain EXPRESSION)
+# Usage: rq [--remote NAME] [--sql] [--db NAME] [--page N] [--per N] [-e ENV] (EXPRESSION | - | schema [TABLE] | models | explain EXPRESSION)
 #        rq --remotes    List the configured remotes.
-#
-# --debug prints the expression and final command to stderr.
 #
 # Without --remote, runs `bin/rails query` locally.
 #
-# Remotes come from .rails_query_remote in the current directory or the nearest parent,
+# Remotes come from .rails_query_remote in the current directory,
 # one `name: command` per line (blank lines and lines starting with # are ignored):
 #
-#   platform_beta: heroku run --no-tty --exit-code --app platform-api-beta "cd apps/api && bin/rails query {args}"
+#   beta: heroku run --no-tty --exit-code --app platform-api-beta "cd apps/api && bin/rails query {args}"
 #
-# The command is taken literally. `{args}` is replaced with the query arguments; without `{args}`
-# they are appended. `$1` is still accepted in place of `{args}` for older templates.
+# The command is taken literally and must contain `{args}`, which is replaced with the query arguments.
 #
 # Quoting follows where `{args}` sits in the command:
 #   inside "…" or '…'  the string is handed to a remote shell (heroku run, ssh, sh -c), so the
@@ -24,17 +21,16 @@
 
 set -euo pipefail
 
-die() { echo "rq: $*" >&2; exit 2; }
+die() {
+  echo "rq: $*" >&2
+  exit 2
+}
 
-# Prints `name<TAB>command` for every remote in the nearest .rails_query_remote.
+# Prints `name<TAB>command` for every remote in ./.rails_query_remote.
 # Each line is `name: command`; the command is everything after the first `: `, taken literally.
 remotes() {
-  local dir="$PWD" file line n=0 name value seen=" " out=""
-  until [[ -f "$dir/.rails_query_remote" ]]; do
-    [[ "$dir" == / ]] && die "no .rails_query_remote in $PWD or its parents"
-    dir="$(dirname "$dir")"
-  done
-  file="$dir/.rails_query_remote"
+  local file="$PWD/.rails_query_remote" line n=0 name value seen=" " out=""
+  [[ -f "$file" ]] || die "no .rails_query_remote in $PWD"
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     ((n += 1))
@@ -49,6 +45,7 @@ remotes() {
     [[ "$seen" != *" $name "* ]] || die "$file:$n: remote $name is defined twice"
     seen+="$name "
     [[ "$value" != *$'\t'* ]] || die "$file:$n: remote $name has a tab in its command"
+    [[ "$value" == *"{args}"* ]] || die "$file:$n: remote $name has no {args} in its command"
     out+="$name"$'\t'"$value"$'\n'
   done <"$file"
   printf '%s' "$out"
@@ -61,36 +58,53 @@ safe() {
 
 original=("$@")
 remote=""
-debug=""
 flags=()
 positional=()
 
 while (($#)); do
   case "$1" in
-    --remotes)
-      remotes; exit ;;
-    -r|--remote)
-      (($# >= 2)) || die "$1 needs a value"
-      remote="$(safe "$2")"; shift 2 ;;
-    --remote=*)
-      remote="$(safe "${1#*=}")"; shift ;;
-    --debug)
-      debug=1; shift ;;
-    --sql)
-      flags+=(--sql); shift ;;
-    --db|--database|--page|--per|-e|--environment)
-      (($# >= 2)) || die "$1 needs a value"
-      flags+=("$1" "$(safe "$2")"); shift 2 ;;
-    --db=*|--database=*|--page=*|--per=*|--environment=*)
-      flags+=("${1%%=*}" "$(safe "${1#*=}")"); shift ;;
-    --)
-      shift; positional+=("$@"); break ;;
-    -)
-      positional+=("-"); shift ;;
-    -*)
-      die "unknown option $1" ;;
-    *)
-      positional+=("$1"); shift ;;
+  --remotes)
+    remotes
+    exit
+    ;;
+  -r | --remote)
+    (($# >= 2)) || die "$1 needs a value"
+    remote="$(safe "$2")"
+    shift 2
+    ;;
+  --remote=*)
+    remote="$(safe "${1#*=}")"
+    shift
+    ;;
+  --sql)
+    flags+=(--sql)
+    shift
+    ;;
+  --db | --database | --page | --per | -e | --environment)
+    (($# >= 2)) || die "$1 needs a value"
+    flags+=("$1" "$(safe "$2")")
+    shift 2
+    ;;
+  --db=* | --database=* | --page=* | --per=* | --environment=*)
+    flags+=("${1%%=*}" "$(safe "${1#*=}")")
+    shift
+    ;;
+  --)
+    shift
+    positional+=("$@")
+    break
+    ;;
+  -)
+    positional+=("-")
+    shift
+    ;;
+  -*)
+    die "unknown option $1"
+    ;;
+  *)
+    positional+=("$1")
+    shift
+    ;;
   esac
 done
 
@@ -109,108 +123,90 @@ table="$(remotes)"
 template="$(awk -F '\t' -v name="$remote" '$1 == name { sub(/^[^\t]*\t/, ""); print; exit }' <<<"$table")"
 [[ -n "$template" ]] || die "unknown remote '$remote' (configured: $(cut -f1 <<<"$table" | paste -sd ' '))"
 
-placeholder='{args}'
-if [[ "$template" != *"$placeholder"* ]]; then
-  # Older templates used `$1`.
-  if [[ "$template" == *'$1'* ]]; then
-    placeholder='$1'
-  else
-    template="$template $placeholder"
-  fi
-fi
-
-# Quote state (none/single/double) of the shell at the first placeholder in the template.
-prefix="${template%%"$placeholder"*}"
+# Quote state (none/single/double) of the shell at the first {args} in the template.
+prefix="${template%%"{args}"*}"
 context=none
 for ((i = 0; i < ${#prefix}; i++)); do
   c="${prefix:i:1}"
   case "$context" in
-    none)
-      case "$c" in
-        \\) ((i += 1)) ;;
-        \') context=single ;;
-        \") context=double ;;
-      esac ;;
-    single)
-      [[ "$c" == \' ]] && context=none ;;
-    double)
-      case "$c" in
-        \\) ((i += 1)) ;;
-        \") context=none ;;
-      esac ;;
+  none)
+    case "$c" in
+    \\) ((i += 1)) ;;
+    \') context=single ;;
+    \") context=double ;;
+    esac
+    ;;
+  single)
+    [[ "$c" == \' ]] && context=none
+    ;;
+  double)
+    case "$c" in
+    \\) ((i += 1)) ;;
+    \") context=none ;;
+    esac
+    ;;
   esac
 done
 
 quote() {
   local remote
   case "$context" in
-    none)
-      printf '%q' "$1" ;;
-    single)
-      remote="'${1//\'/\'\\\'\'}'"
-      printf '%s' "${remote//\'/\'\\\'\'}" ;;
-    double)
-      remote="'${1//\'/\'\\\'\'}'"
-      remote="${remote//\\/\\\\}"
-      remote="${remote//\$/\\\$}"
-      remote="${remote//\`/\\\`}"
-      printf '%s' "${remote//\"/\\\"}" ;;
+  none)
+    printf '%q' "$1"
+    ;;
+  single)
+    remote="'${1//\'/\'\\\'\'}'"
+    printf '%s' "${remote//\'/\'\\\'\'}"
+    ;;
+  double)
+    remote="'${1//\'/\'\\\'\'}'"
+    remote="${remote//\\/\\\\}"
+    remote="${remote//\$/\\\$}"
+    remote="${remote//\`/\\\`}"
+    printf '%s' "${remote//\"/\\\"}"
+    ;;
   esac
 }
 
 expression=""
 case "${positional[0]:-}" in
-  schema)
-    ((${#positional[@]} <= 2)) || die "schema takes at most one table name"
-    args=(schema)
-    [[ -n "${positional[1]:-}" ]] && args+=("$(safe "${positional[1]}")")
-    ;;
-  models)
-    ((${#positional[@]} == 1)) || die "models takes no arguments"
-    args=(models) ;;
-  explain)
-    ((${#positional[@]} <= 2)) || die "quote the expression as a single argument"
-    expression="$(read_expression "${positional[1]:-}")"
-    args=(explain "$(quote "$expression")") ;;
-  *)
-    ((${#positional[@]} <= 1)) || die "quote the expression as a single argument"
-    expression="$(read_expression "${positional[0]:-}")"
-    args=("$(quote "$expression")") ;;
+schema)
+  ((${#positional[@]} <= 2)) || die "schema takes at most one table name"
+  args=(schema)
+  [[ -n "${positional[1]:-}" ]] && args+=("$(safe "${positional[1]}")")
+  ;;
+models)
+  ((${#positional[@]} == 1)) || die "models takes no arguments"
+  args=(models)
+  ;;
+explain)
+  ((${#positional[@]} <= 2)) || die "quote the expression as a single argument"
+  expression="$(read_expression "${positional[1]:-}")"
+  args=(explain "$(quote "$expression")")
+  ;;
+*)
+  ((${#positional[@]} <= 1)) || die "quote the expression as a single argument"
+  expression="$(read_expression "${positional[0]:-}")"
+  args=("$(quote "$expression")")
+  ;;
 esac
 args+=("${flags[@]}")
 
-# Splice rather than ${template//"$placeholder"/…}: bash 5.2 treats `\` and `&` in the replacement specially.
-command="${prefix}${args[*]}${template#*"$placeholder"}"
+# Splice rather than ${template//"{args}"/…}: bash 5.2 treats `\` and `&` in the replacement specially.
+command="${prefix}${args[*]}${template#*"{args}"}"
 
-if [[ -n "$debug" ]]; then
-  [[ -n "$expression" ]] && echo "rq: expression: $expression" >&2
-  echo "rq: command: $command" >&2
-fi
-
-# Remote runners (heroku run, ssh, …) mix banners and boot logs into stdout. Keep the last JSON
-# line as the result and send everything else to stderr.
+# The remote never needs stdin (the expression is already in the command), so it gets none.
+# Everything it prints — runner banners, boot logs, the result — is collected and printed once it
+# exits: to stdout when it succeeds, to stderr when it fails. Exit with the remote's status.
 output="$(mktemp)"
 trap 'rm -f "$output"' EXIT
 
 status=0
-bash -c "$command" </dev/null >"$output" || status=$?
+bash -c "$command" </dev/null >"$output" 2>&1 || status=$?
 
-tr -d '\r' <"$output" >"$output.clean" && mv "$output.clean" "$output"
-json="$(grep -E '^[[:space:]]*[[{]' "$output" | tail -n 1 || true)"
-
-if [[ -z "$json" ]]; then
-  cat "$output" >&2
-  # A failing `rails query` already wrote its JSON error to stderr.
-  ((status != 0)) && exit "$status"
-  echo "rq: no JSON in output" >&2
-  exit 1
-fi
-
-grep -vxF -- "$json" "$output" >&2 || true
-
-if ((status == 0)) && [[ "$json" != '{"error":'* ]]; then
-  printf '%s\n' "$json"
+if ((status == 0)); then
+  cat "$output"
 else
-  printf '%s\n' "$json" >&2
-  exit $((status == 0 ? 1 : status))
+  cat "$output" >&2
 fi
+exit "$status"

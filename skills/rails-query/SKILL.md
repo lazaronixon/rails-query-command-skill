@@ -5,7 +5,7 @@ description: |
   (built into Rails 8.2+, backported to Rails 7.2/8.0/8.1 by the `rails-query-command` gem):
   counts, lookups, "how many X", ad-hoc investigation, schema exploration, EXPLAIN plans,
   and aggregates — whether locally or against a deployed environment reached through the
-  named remotes in the repo's `.rails_query_remote` (Heroku, SSH, docker, kubectl, …). Trigger
+  named remotes in the project's `.rails_query_remote` (Heroku, SSH, docker, kubectl, …). Trigger
   broadly whenever the user asks for data from a Rails app's database, mentions
   `rails query` / `bin/rails query` / `rq` / `rails-query-command`, asks to inspect schema,
   tables, or models, wants to run SQL or ActiveRecord against the database, needs an EXPLAIN
@@ -17,7 +17,7 @@ description: |
 
 # rails-query
 
-`rails query` runs read-only queries against a Rails app's database. Input is a single expression, output is a single JSON object on stdout (`{columns, rows, meta}`; errors go to stderr as JSON with a non-zero exit), and writes are blocked at the connection level. With a read replica configured it hits the replica automatically, so it's safe to point at production.
+`rails query` runs read-only queries against a Rails app's database. Input is a single expression, output is a JSON object (`{columns, rows, meta}`, or `{"error": …}` on failure), and writes are blocked at the connection level. Locally the result goes to stdout and errors to stderr with a non-zero exit; remotely `rq` sends everything (logs included) to stdout on success and to stderr on failure, with the JSON among the logs (see "Remote setup"). With a read replica configured it hits the replica automatically, so it's safe to point at production.
 
 It ships with Rails 8.2+. On Rails 7.2, 8.0 and 8.1 it comes from the [`rails-query-command`](https://github.com/lazaronixon/rails-query-command) gem (`gem "rails-query-command"` in the Gemfile) — same command, same output.
 
@@ -30,7 +30,7 @@ Prefer it over a console, a script, or SSH for any data question. One invocation
 - **Local** (`bin/rails query`) — development, tests, or anywhere you have the app checked out.
 - **Remote** (`rq --remote NAME`) — a deployed app, reached through a named remote in the config file. `rq` is the wrapper script at `scripts/rq` in this skill's directory (`${CLAUDE_PLUGIN_ROOT}/skills/rails-query/scripts/rq`). Call it by its full path.
 
-If the user is asking about a deployed environment (production, beta, staging, "live", an app name), run `rq --remotes` to list the configured remotes and pick the one that matches — e.g. "beta" → `platform_beta`. If several could match or none does, ask which one. If there's no `.rails_query_remote`, ask the user to set it up (see "Remote setup"). Otherwise use `bin/rails query`.
+If the user is asking about a deployed environment (production, beta, staging, "live", an app name), run `rq --remotes` to list the configured remotes and pick the one that matches — e.g. "live" → `production`. If several could match or none does, ask which one. If there's no `.rails_query_remote`, ask the user to set it up (see "Remote setup"). Otherwise use `bin/rails query`.
 
 If `bin/rails query` says `Could not find command "query"`, the app is older than Rails 8.2 and doesn't have the gem — check `Gemfile.lock` for `rails-query-command` and suggest adding it.
 
@@ -54,7 +54,7 @@ bin/rails query models           # every AR model with its table and association
 
 Enums matter: if a column is an enum, `User.where(status: "active")` works but `User.where(status: 0)` might silently misfire. `schema <table>` tells you.
 
-**Remotely, cache the schema locally before `jq`-ing it** — each round-trip boots a process on the server (a Heroku one-off dyno takes 10-30s+). Dump `schema` / `models` / `schema <table>` to `/tmp/rails-query-cache-<app>/` once, then `jq` against the files. Skip caching for single-query tasks or local runs.
+**Remotely, cache the schema locally before reading it** — each round-trip boots a process on the server (a Heroku one-off dyno takes 10-30s+). Dump `schema` / `models` / `schema <table>` to `/tmp/rails-query-cache-<app>/` once, then read the files. Skip caching for single-query tasks or local runs.
 
 ### 4. For expensive queries, `EXPLAIN` first
 
@@ -74,13 +74,15 @@ bin/rails query --sql 'SELECT COUNT(*) FROM users'
 
 Watch for `"has_more": true` in the response — pagination is truncating. Re-run with `--page N` or raise `--per`. Don't add your own `LIMIT`; see "Pagination".
 
-### 6. Extract what you need
+### 6. Read the result
 
-```bash
-bin/rails query 'User.count' | jq '.rows[0][0]'                  # single scalar
-bin/rails query 'User.pluck(:email)' | jq -r '.rows[][0]'        # column as array
-COUNT=$(bin/rails query 'User.count' | jq -r '.rows[0][0]')      # into a shell var
+Read the JSON directly. `rows` holds one array per row, in `columns` order:
+
+```json
+{"columns":["result"],"rows":[[202485]],"meta":{"row_count":1,"page":1,"per_page":100,"has_more":false,"sql":"User.count"}}
 ```
+
+A single value (`User.count`) is `rows[0][0]`; a plucked column (`User.pluck(:email)`) is the first element of each row.
 
 Every example works the same with `rq --remote NAME` in place of `bin/rails query`.
 
@@ -125,41 +127,41 @@ Always order explicitly when paginating — without `ORDER BY`, page 2 can overl
 
 ## Remote setup
 
-Remotes live in `.rails_query_remote` at the root of the app's repository (`rq` looks in the current directory and its parents). It has one `name: command` per line; blank lines and lines starting with `#` are ignored. The command is everything after the first `: `, the full command that runs `rails query` on the deployed app, taken literally — no extra shell quoting around it. `rq` puts the query arguments (expression, subcommand, flags) where `{args}` is. Without `{args}`, they're appended to the end.
+Remotes live in `.rails_query_remote` at the root of the project — the Rails app, next to `bin/rails` (in a monorepo, e.g. `apps/api/`). Each project has its own. `rq` only looks in the current directory, so run it from the project root, the same place you run `bin/rails query`. It has one `name: command` per line; blank lines and lines starting with `#` are ignored. The command is everything after the first `: `, the full command that runs `rails query` on the deployed app, taken literally — no extra shell quoting around it. It must contain `{args}`: `rq` puts the query arguments (expression, subcommand, flags) there.
 
 ```
 # Heroku (monorepo, app in apps/api)
-platform_production: heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query {args}"
-platform_beta: heroku run --no-tty --exit-code --app platform-api-beta "cd apps/api && bin/rails query {args}"
+production: heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query {args}"
+beta: heroku run --no-tty --exit-code --app platform-api-beta "cd apps/api && bin/rails query {args}"
 
-# Others
-web_ssh: ssh deploy@app.example.com "cd /srv/app/current && bin/rails query {args}"
-web_k8s: kubectl exec -i deploy/web -- sh -c "bin/rails query {args}"
-web_docker: docker exec -i app sh -c "bin/rails query {args}"
+# Other runners — name each after its environment (production, staging, …)
+ssh: ssh -n deploy@app.example.com "cd /srv/app/current && bin/rails query {args}"
+k8s: kubectl exec deploy/web -- sh -c "bin/rails query {args}"
+docker: docker exec app sh -c "bin/rails query {args}"
 ```
 
-Name remotes after the app and environment (`platform_production`, `platform_beta`) so it's obvious which one a question refers to. Names may use letters, digits, `_`, `.` and `-`. Commit the file to share remotes with the team, or add it to `.gitignore` to keep them personal.
+Name remotes after the environment (`production`, `beta`) so it's obvious which one a question refers to — the file belongs to one project, so the app name isn't needed. Names may use letters, digits, `_`, `.` and `-`. Commit the file to share remotes with the team, or add it to `.gitignore` to keep them personal.
 
-Where `{args}` sits decides the quoting. Inside `"…"` or `'…'`, `rq` assumes the string goes to a remote shell (`heroku run`, `ssh`, `sh -c`) and quotes for that shell and for yours. Unquoted, only your local shell parses it. So for remote commands, keep `{args}` inside the quoted command string. Use `--no-tty` and `--exit-code` with `heroku run` so output isn't mangled and failures propagate.
+Where `{args}` sits decides the quoting. Inside `"…"` or `'…'`, `rq` assumes the string goes to a remote shell (`heroku run`, `ssh`, `sh -c`) and quotes for that shell and for yours. Unquoted, only your local shell parses it. So for remote commands, keep `{args}` inside the quoted command string. With `heroku run`, add `--exit-code` so a failed query exits non-zero, and `--no-tty` so it never attaches your terminal.
 
 Then:
 
 ```bash
 rq --remotes
-rq --remote platform_beta 'User.count'
-rq -r platform_production --sql 'SELECT COUNT(*) FROM users'
-rq -r platform_beta schema users
+rq --remote beta 'User.count'
+rq -r production --sql 'SELECT COUNT(*) FROM users'
+rq -r beta schema users
 ```
 
-`rq` keeps only the JSON result on stdout. The runner's banners (`Running … on ⬢ app… up, run.1234`) and boot logs go to stderr, so piping to `jq` just works. Add `2>/dev/null` if the noise gets in the way.
+`rq` prints everything the remote printed — the runner's banners, boot logs and warnings, and the result — once the remote exits. On success it all goes to stdout; on failure it all goes to stderr and `rq` exits non-zero. `rq` exits with the remote command's status. The JSON line (`{"columns": …}` or `{"error": …}`) is usually the last line, but with ssh, kubectl or docker some logs can land after it — look for the line that starts with `{` (or `[` for `models`).
 
 ### Quoting
 
 There's nothing special to do. `rq` quotes the expression for every layer (local shell, Heroku CLI/ssh, the remote `bash -c`), so parens, `*`, quotes, `$`, `&` and newlines arrive intact. Quote the way you would locally:
 
 ```bash
-rq -r platform_production --sql "SELECT id FROM users WHERE email = 'alice@example.com'"
-rq -r platform_production 'User.where(email: "alice@example.com").pick(:id)'
+rq -r production --sql "SELECT id FROM users WHERE email = 'alice@example.com'"
+rq -r production 'User.where(email: "alice@example.com").pick(:id)'
 ```
 
 Don't hand-assemble `heroku run "… rails query '…'"` commands yourself — that's where quoting breaks. Always go through `rq`.
@@ -178,8 +180,8 @@ bin/rails query 'User.find_by(email: "alice@example.com")&.as_json'
 bin/rails query 'Post.published.joins(:author).where(authors: { verified: true }).count'
 
 # Schema-first discovery
-bin/rails query schema orders | jq '.columns[] | {name, type, null}'
-bin/rails query models | jq '.[] | select(.table_name == "accounts") | .model'
+bin/rails query schema orders
+bin/rails query models
 ```
 
 ## Safety model
@@ -197,8 +199,8 @@ bin/rails query models | jq '.[] | select(.table_name == "accounts") | .model'
 |---------|--------------|-----|
 | `SyntaxError: unexpected *` | SQL passed without `--sql` | Add `--sql` |
 | `Could not find command "query"` | Rails < 8.2 without the gem, or the remote isn't deployed with it yet | Add `gem "rails-query-command"` and deploy |
-| `rq: no JSON in output` | Boot crash, wrong directory, or runner error | Read the stderr above it; re-run with `--debug` to see the exact command |
-| `rq: no .rails_query_remote …` / `rq: unknown remote` | Remote not configured | Add a `name: command` entry to `.rails_query_remote` at the repo root; `rq --remotes` lists what's there |
+| No JSON in `rq`'s output | Boot crash, wrong directory, or runner error | Read the output — the error is there |
+| `rq: no .rails_query_remote …` / `rq: unknown remote` | Remote not configured | Add a `name: command` entry to `.rails_query_remote` at the project root and run `rq` from there; `rq --remotes` lists what's there |
 | `bin/rails: No such file or directory` remotely | Wrong `cd` in the remote's command, or no binstub | Fix the `cd`, or use `rails query {args}` |
 | Expression arrives mangled or `syntax error near unexpected token` | `{args}` isn't inside the quoted remote command string | Move `{args}` inside the `"…"` passed to the remote shell |
 | `ActiveRecord::ReadOnlyError` | Expression tried to write | Rework to be read-only |
