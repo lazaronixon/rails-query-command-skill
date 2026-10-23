@@ -17,7 +17,7 @@ description: |
 
 # rails-query
 
-`rails query` runs read-only queries against a Rails app's database. Input is a single expression, output is a JSON object (`{columns, rows, meta}`, or `{"error": …}` on failure), and writes are blocked at the connection level. Locally the result goes to stdout and errors to stderr with a non-zero exit; remotely `rq` sends everything (logs included) to stdout on success and to stderr on failure, with the JSON among the logs (see "Remote setup"). With a read replica configured it hits the replica automatically, so it's safe to point at production.
+`rails query` runs read-only queries against a Rails app's database. Input is a single expression, output is a JSON object (`{columns, rows, meta}`, or `{"error": …}` on failure), and writes are blocked at the connection level. Locally the result goes to stdout and errors to stderr with a non-zero exit; remotely `rq` does the same, keeping only the JSON and dropping the server's boot logs (see "Remote setup"). With a read replica configured it hits the replica automatically, so it's safe to point at production.
 
 It ships with Rails 8.2+. On Rails 7.2, 8.0 and 8.1 it comes from the [`rails-query-command`](https://github.com/lazaronixon/rails-query-command) gem (`gem "rails-query-command"` in the Gemfile) — same command, same output.
 
@@ -153,7 +153,7 @@ rq -r production --sql 'SELECT COUNT(*) FROM users'
 rq -r beta schema users
 ```
 
-`rq` prints everything the remote printed — the runner's banners, boot logs and warnings, and the result — once the remote exits. On success it all goes to stdout; on failure it all goes to stderr and `rq` exits non-zero. `rq` exits with the remote command's status. The JSON line (`{"columns": …}` or `{"error": …}`) is usually the last line, but with ssh, kubectl or docker some logs can land after it — look for the line that starts with `{` (or `[` for `models`).
+`rq` prints only the JSON result, once the remote exits — the runner's banners and the server's boot logs are dropped. On success it goes to stdout; on failure the JSON error goes to stderr. `rq` exits with the remote command's status. Most failures, including errors while the app boots (bad credentials, a missing ENV var), come back from `rails query` as that JSON error. When there's no JSON at all — a crash `rails query` couldn't report, a wrong `cd`, a runner error — `rq` prints everything the remote printed to stderr instead and exits non-zero; the backtrace or the runner's error is in there.
 
 ### Quoting
 

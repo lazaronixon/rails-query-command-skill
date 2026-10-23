@@ -73,7 +73,7 @@ rq -r beta schema users
 
 - **quotes the expression for every layer**: your shell, and the remote shell when `{args}` sits inside the quoted command string. So parens, `*`, quotes, `$`, `&` and newlines arrive intact;
 - validates flags (`--sql`, `--db`, `--page`, `--per`, `-e`) and table names;
-- prints everything the remote printed (banners, boot logs, the result) once it exits: to stdout on success, to stderr on failure;
+- prints only the JSON result, like `rails query`: to stdout on success, to stderr on failure. Runner banners and boot logs are dropped, unless there's no result (a crash `rails query` couldn't report, a runner error) — then everything goes to stderr with a non-zero exit;
 - exits with the remote command's status (use `--exit-code` with `heroku run`);
 - runs local `bin/rails query` when no `--remote` is given.
 
