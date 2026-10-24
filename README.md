@@ -43,7 +43,7 @@ Or, from inside a Claude Code session:
 
 ## Remote setup
 
-Create `.rails_query_remote` at the root of your project (the Rails app, next to `bin/rails`), with one `name: command` per line. Each project has its own: in a monorepo, each Rails app (e.g. `apps/api`) gets its own file. Each command is the full command that runs `rails query`, taken literally (everything after the first `: `), and it ends in `bin/rails query {args}` or `rails query {args}`:
+Create `.rails_query_remote` at the root of your project (the Rails app, next to `bin/rails`), with one `name: command` per line. Each project has its own: in a monorepo, each Rails app (e.g. `apps/api`) gets its own file. Each command is the full command that runs `rails query`, taken literally (everything after the first `: `), and it ends in `bin/rails query {args}`:
 
 ```
 # Example
@@ -58,7 +58,7 @@ docker: docker exec -i app sh -c "bin/rails query {args}"
 
 Blank lines and lines starting with `#` are ignored. Commit it to share remotes with your team, or add it to `.gitignore` to keep them personal.
 
-Name remotes after the environment (`production`, `beta`) so Claude can match "in beta" or "in production" to the right one. Keep `rails query {args}` at the end of the command string, and let the command pass its stdin through: no `-n` on `ssh`, `-i` on `docker exec` and `kubectl exec`.
+Name remotes after the environment (`production`, `beta`) so Claude can match "in beta" or "in production" to the right one. Keep `bin/rails query {args}` at the end of the command string, and let the command pass its stdin through: no `-n` on `ssh`, `-i` on `docker exec` and `kubectl exec`.
 
 Claude reads the file, picks the remote for the environment you named, replaces `{args}` (`-` for a Ruby expression, `--sql -`, `explain -`, `schema users`, …) and runs the command, with the expression on stdin. `rails query -` reads the expression from stdin, so it never passes through a shell: quotes, `$`, parens and newlines arrive intact, and expressions can span several lines:
 

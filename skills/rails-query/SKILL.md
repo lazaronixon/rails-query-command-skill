@@ -58,7 +58,7 @@ If there is no `.rails_query_remote`, tell the user how to add one (see "Remote 
 
 ### Running a remote
 
-Each line of `.rails_query_remote` is `name: command`, and the command ends in `bin/rails query {args}` or `rails query {args}`. Replace `{args}` with what follows `bin/rails query` in the table above, and run the command otherwise exactly as written, with the same heredoc and `2>&1`. Here `<runner>` stands for the part of the remote's command before the quoted `rails query`:
+Each line of `.rails_query_remote` is `name: command`, and the command ends in `bin/rails query {args}`. Replace `{args}` with what follows `bin/rails query` in the table above, and run the command otherwise exactly as written, with the same heredoc and `2>&1`. Here `<runner>` stands for the part of the remote's command before the quoted `rails query`:
 
 ```bash
 <runner> "bin/rails query -" 2>&1 <<'RUBY'
@@ -66,7 +66,7 @@ User.where(created_at: 30.days.ago..).group(:plan).count
 RUBY
 ```
 
-`{args}` becomes `--sql -` for SQL, `explain -` for EXPLAIN, and `schema users` for schema, with `< /dev/null` instead of a heredoc. Leave the rest of the command alone: runner, flags, path. If it looks wrong, or doesn't end in `rails query {args}`, say so rather than fixing it silently.
+`{args}` becomes `--sql -` for SQL, `explain -` for EXPLAIN, and `schema users` for schema, with `< /dev/null` instead of a heredoc. Leave the rest of the command alone: runner, flags, path. If it looks wrong, or doesn't end in `bin/rails query {args}`, say so rather than fixing it silently.
 
 Each remote run usually boots the app in a fresh process, often 10–30 seconds. Plan before running:
 
@@ -118,14 +118,14 @@ Run `explain` before heavy queries against production (full scans, unindexed fil
 
 ## Remote setup
 
-`.rails_query_remote` sits next to `bin/rails`; in a monorepo, each Rails app has its own. One `name: command` per line; everything after the first `: ` is a shell command ending in `bin/rails query {args}` or `rails query {args}`, which you replace per query (`-`, `--sql -`, `schema users`). Blank lines and `#` comments are ignored.
+`.rails_query_remote` sits next to `bin/rails`; in a monorepo, each Rails app has its own. One `name: command` per line; everything after the first `: ` is a shell command ending in `bin/rails query {args}`, which you replace per query (`-`, `--sql -`, `schema users`). Blank lines and `#` comments are ignored.
 
 ```
 production: <runner for production> "bin/rails query {args}"
 beta: <runner for beta> "bin/rails query {args}"
 ```
 
-`<runner>` is whatever runs a command where the app is deployed. `rails query {args}` must end the command string, and the runner must pass its stdin on to `rails query` and close it at the end: some runners need a flag to forward stdin, and some have a flag that disables it. Name remotes after environments so requests like "in beta" map to them directly.
+`<runner>` is whatever runs a command where the app is deployed. `bin/rails query {args}` must end the command string, and the runner must pass its stdin on to `bin/rails query` and close it at the end: some runners need a flag to forward stdin, and some have a flag that disables it. Name remotes after environments so requests like "in beta" map to them directly.
 
 ## Troubleshooting
 
