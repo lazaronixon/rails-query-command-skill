@@ -70,7 +70,7 @@ EOF
 Each remote run usually boots the app in a fresh process, often 10–30 seconds. Plan before running:
 
 - Answer several numbers in **one** expression that returns a Hash, as in the first example.
-- Read `db/schema.rb` and `app/models` locally instead of a remote `schema` call when the code answers the question. Deployed code is usually close to the checked-out branch.
+- Read the schema file (`db/schema.rb`, or `db/structure.sql` in apps that dump SQL) and `app/models` locally instead of a remote `schema` call when the code answers the question. Deployed code is usually close to the checked-out branch.
 
 ## Writing the expression
 
@@ -78,7 +78,7 @@ Each remote run usually boots the app in a fresh process, often 10–30 seconds.
 
 **`--sql`** for raw table access, joins without models, or aggregates awkward in AR. If you see `SyntaxError: unexpected *`, SQL was parsed as Ruby; add `--sql`.
 
-**Look at the schema first when it's unfamiliar.** Guessing a column name costs a round trip (`column users.last_name does not exist`). Read `db/schema.rb` and the model, or run `schema TABLE`, which also lists enums and associations. For an enum column, `User.where(status: "active")` is right, while `User.where(status: 0)` may silently misfire; `schema TABLE` reports enums under `enums` (absent when the table has none, or no model).
+**Look at the schema first when it's unfamiliar.** Guessing a column name costs a round trip (`column users.last_name does not exist`). Read the schema file (`db/schema.rb` or `db/structure.sql`) and the model, or run `schema TABLE`, which also lists enums and associations. For an enum column, `User.where(status: "active")` is right, while `User.where(status: 0)` may silently misfire; `schema TABLE` reports enums under `enums` (absent when the table has none, or no model).
 
 **Time zones.** Ruby ranges like `30.days.ago..` use the app's time zone; raw SQL dates (`DATE(created_at)`) are in the database's, usually UTC. Day-by-day counts can differ between the two near midnight, so say which you used.
 

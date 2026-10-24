@@ -2,6 +2,12 @@
 
 All notable changes to this plugin are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions match `.claude-plugin/plugin.json`.
 
+## [0.6.5] - 2026-10-24
+
+### Changed
+
+- `SKILL.md` points to `db/structure.sql` as well as `db/schema.rb` when reading the schema locally.
+
 ## [0.6.4] - 2026-10-24
 
 ### Changed
