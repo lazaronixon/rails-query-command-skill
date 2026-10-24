@@ -63,10 +63,10 @@ Name remotes after the environment (`production`, `beta`) so Claude can match "i
 Claude reads the file, picks the remote for the environment you named, replaces `{args}` (`-` for a Ruby expression, `--sql -`, `explain -`, `schema users`, …) and runs the command, with the expression on stdin. `rails query -` reads the expression from stdin, so it never passes through a shell: quotes, `$`, parens and newlines arrive intact, and expressions can span several lines:
 
 ```bash
-heroku run -a platform-api-beta -x "apps/api/bin/rails query -" <<'RUBY'
+heroku run -a platform-api-beta -x "apps/api/bin/rails query -" <<'EOF'
 recent = User.where(created_at: 30.days.ago..)
 {obrien: recent.where(last_name: "O'Brien").count, total: recent.count}
-RUBY
+EOF
 ```
 
 Output is left alone: runner banners, boot logs and the JSON result come through as the runner prints them, with its exit status.

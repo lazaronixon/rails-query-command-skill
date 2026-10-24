@@ -24,14 +24,14 @@ Use it instead of a console, a runner script or a shell on the server for any da
 Pass the expression on stdin with a quoted heredoc, locally and on remotes alike:
 
 ```bash
-bin/rails query - <<'RUBY'
+bin/rails query - <<'EOF'
 recent = User.where(created_at: 30.days.ago..)
 {obrien: recent.where(last_name: "O'Brien").count,
  dollar: recent.where("email LIKE ?", "%$%").count}
-RUBY
+EOF
 ```
 
-- **`-` reads the expression from stdin**, and the quoted heredoc (`<<'RUBY'`, `<<'SQL'`) delivers it byte for byte: no shell parses it, so quotes, `$` and newlines need no escaping. Write the expression exactly as it should run. Never put it in the command string, where one apostrophe in `O'Brien` breaks the quoting.
+- **`-` reads the expression from stdin**, and the quoted heredoc (`<<'EOF'`) delivers it byte for byte: no shell parses it, so quotes, `$` and newlines need no escaping. Write the expression exactly as it should run. Never put it in the command string, where one apostrophe in `O'Brien` breaks the quoting.
 - **The result is the last line** starting with `{"columns"`, `{"table"`, `{"error"` or `[{"model"`. Logs often surround it, even locally (development logs SQL at debug level; remotes add runner banners and boot output, and some runners echo the expression back first), so pick that line out. No such line means the command itself failed (boot crash, auth, wrong path): read the rest of the output for why.
 
 Flags and subcommands go before the `-`. `schema` and `models` take no expression, so they replace the `-` and get `< /dev/null` instead of a heredoc (`schema -` would look for a table named `-`).
@@ -60,9 +60,9 @@ If there is no `.rails_query_remote`, tell the user how to add one (see "Remote 
 Each line of `.rails_query_remote` is `name: command`, and the command ends in `bin/rails query {args}`. Replace `{args}` with what follows `bin/rails query` in the table above, and run the command otherwise exactly as written, with the same heredoc. Here `<runner>` stands for the part of the remote's command before the quoted `rails query`:
 
 ```bash
-<runner> "bin/rails query -" <<'RUBY'
+<runner> "bin/rails query -" <<'EOF'
 User.where(created_at: 30.days.ago..).group(:plan).count
-RUBY
+EOF
 ```
 
 `{args}` becomes `--sql -` for SQL, `explain -` for EXPLAIN, and `schema users` for schema, with `< /dev/null` instead of a heredoc. Leave the rest of the command alone: runner, flags, path. If it looks wrong, or doesn't end in `bin/rails query {args}`, say so rather than fixing it silently.
