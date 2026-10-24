@@ -5,7 +5,7 @@ A Claude Code plugin that teaches Claude to answer data questions about a Rails 
 It's a fork of [lewispb/rails-query-skill](https://github.com/lewispb/rails-query-skill), adapted to:
 
 - Work on **Rails 7.2, 8.0 and 8.1** via the [`rails-query-command`](https://github.com/lazaronixon/rails-query-command) gem (and on Rails 8.2+ natively).
-- Run remotely through **named command templates in your app's `.rails_query_remote`**, plus a small wrapper (`rq`) that makes remote quoting a non-issue.
+- Run remotely through **named command templates in your app's `.rails_query_remote`**. The skill is Markdown only: no scripts to install, just `bash` on Claude's side.
 
 ## What it does
 
@@ -43,44 +43,33 @@ Or, from inside a Claude Code session:
 
 ## Remote setup
 
-Create `.rails_query_remote` at the root of your project (the Rails app, next to `bin/rails`), with one `name: command` per line. Each project has its own. Each command is the full command that runs `rails query`, taken literally (everything after the first `: `); `{args}` marks where the query arguments go:
+Create `.rails_query_remote` at the root of your project (the Rails app, next to `bin/rails`), with one `name: command` per line. Each project has its own: in a monorepo, each Rails app (e.g. `apps/api`) gets its own file. Each command is the full command that runs `rails query`, taken literally (everything after the first `: `), and it ends in `rails query {args}` (`bin/rails`, `bundle exec rails` or plain `rails`):
 
 ```
-# Heroku (monorepo, app in apps/api)
-production: heroku run --no-tty --exit-code --app platform-api-main "cd apps/api && bin/rails query {args}"
-beta: heroku run --no-tty --exit-code --app platform-api-beta "cd apps/api && bin/rails query {args}"
+# Example
+production: heroku run -a platform-api-main -x "apps/api/bin/rails query {args}"
+beta: heroku run -a platform-api-beta -x "apps/api/bin/rails query {args}"
 
-# Other runners — name each after its environment (production, staging, …)
-ssh: ssh -n deploy@app.example.com "cd /srv/app/current && bin/rails query {args}"
-k8s: kubectl exec deploy/web -- sh -c "bin/rails query {args}"
-docker: docker exec app sh -c "bin/rails query {args}"
+# Other runners
+ssh: ssh deploy@app.example.com "/srv/app/current/bin/rails query {args}"
+k8s: kubectl exec -i deploy/web -- sh -c "bin/rails query {args}"
+docker: docker exec -i app sh -c "bin/rails query {args}"
 ```
 
-Blank lines and lines starting with `#` are ignored. `rq` reads the file from the current directory itself, so it needs nothing beyond bash. Commit it to share remotes with your team, or add it to `.gitignore` to keep them personal.
+Blank lines and lines starting with `#` are ignored. Commit it to share remotes with your team, or add it to `.gitignore` to keep them personal.
 
-Name remotes after the environment (`production`, `beta`) so Claude can match "in beta" or "in production" to the right one. Keep `{args}` inside the quoted command string for remote commands, so `rq` knows a remote shell will parse it too.
+Name remotes after the environment (`production`, `beta`) so Claude can match "in beta" or "in production" to the right one. Keep `rails query {args}` at the end of the command string, and let the command pass its stdin through: no `-n` on `ssh`, `-i` on `docker exec` and `kubectl exec`.
 
-Claude then runs queries through the bundled wrapper:
+Claude reads the file, picks the remote for the environment you named, replaces `{args}` (`-` for a Ruby expression, `--sql -`, `explain -`, `schema users`, …) and runs the command, with the expression on stdin. `rails query -` reads the expression from stdin, so it never passes through a shell: quotes, `$`, parens and newlines arrive intact, and expressions can span several lines:
 
 ```bash
-rq --remotes # list configured remotes
-rq --remote beta 'User.count'
-rq -r production --sql 'SELECT COUNT(*) FROM users'
-rq -r beta schema users
+heroku run -a platform-api-beta -x "apps/api/bin/rails query -" <<'RUBY'
+recent = User.where(created_at: 30.days.ago..)
+{obrien: recent.where(last_name: "O'Brien").count, total: recent.count}
+RUBY
 ```
 
-`rq` (`skills/rails-query/scripts/rq`):
-
-- **quotes the expression for every layer**: your shell, and the remote shell when `{args}` sits inside the quoted command string. So parens, `*`, quotes, `$`, `&` and newlines arrive intact;
-- validates flags (`--sql`, `--db`, `--page`, `--per`, `-e`) and table names;
-- prints only the JSON result, like `rails query`: to stdout on success, to stderr on failure. Runner banners and boot logs are dropped, unless there's no result (a crash `rails query` couldn't report, a runner error) — then everything goes to stderr with a non-zero exit;
-- exits with the remote command's status (use `--exit-code` with `heroku run`);
-- runs local `bin/rails query` when no `--remote` is given.
-
-| Option | Purpose |
-|--------|---------|
-| `-r`, `--remote NAME` | Run on the named remote from `.rails_query_remote` |
-| `--remotes` | List the configured remotes |
+Output is left alone: runner banners, boot logs and the JSON result come through as the runner prints them, with its exit status.
 
 ## How triggering works
 
