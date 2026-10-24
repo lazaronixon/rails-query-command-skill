@@ -2,6 +2,13 @@
 
 All notable changes to this plugin are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions match `.claude-plugin/plugin.json`.
 
+## [0.6.6] - 2026-10-24
+
+### Added
+
+- An "Auto mode" section in the README, with the `autoMode.allow` rule that stops the classifier from blocking `bin/rails query` runs as Production Reads.
+- `SKILL.md` tells Claude not to read `ENV`, Rails credentials or secrets in an expression.
+
 ## [0.6.5] - 2026-10-24
 
 ### Changed

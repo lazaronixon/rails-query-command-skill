@@ -71,6 +71,21 @@ EOF
 
 Output is left alone: runner banners, boot logs and the JSON result come through as the runner prints them, with its exit status.
 
+## Auto mode
+
+If auto mode blocks production runs with `[Production Reads]`, add this to `~/.claude/settings.json`:
+
+```json
+{
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Rails Query: `bin/rails query` runs are not Production Reads."
+    ]
+  }
+}
+```
+
 ## How triggering works
 
 The skill is described broadly so Claude invokes it whenever a task would naturally be solved by querying a Rails database. Try:

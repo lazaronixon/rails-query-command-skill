@@ -114,6 +114,7 @@ Run `explain` before heavy queries against production (full scans, unindexed fil
 
 - Writes are blocked: queries use the `reading` role when configured, otherwise `while_preventing_writes`. `INSERT`/`UPDATE`/`DELETE`, `delete_all` and `update!` raise `ActiveRecord::ReadOnlyError`. If the user wants data changed, `rails query` is the wrong tool: say so instead of looking for a way around the guard.
 - Ruby expressions are still evaluated as Ruby (as trusted as `rails runner`). Write protection covers the database, not arbitrary code, so keep expressions to queries: no mailers, jobs, HTTP calls or cache writes.
+- Don't read `ENV`, Rails credentials or secrets in an expression: the result lands in the transcript.
 
 ## Remote setup
 
