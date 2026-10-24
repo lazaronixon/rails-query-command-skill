@@ -2,6 +2,12 @@
 
 All notable changes to this plugin are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions match `.claude-plugin/plugin.json`.
 
+## [0.6.3] - 2026-10-24
+
+### Changed
+
+- Runs no longer add `2>&1`. Claude's shell already shows stderr, so errors come through without it.
+
 ## [0.6.2] - 2026-10-24
 
 ### Changed
