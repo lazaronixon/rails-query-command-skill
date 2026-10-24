@@ -43,7 +43,7 @@ Or, from inside a Claude Code session:
 
 ## Remote setup
 
-Create `.rails_query_remote` at the root of your project (the Rails app, next to `bin/rails`), with one `name: command` per line. Each project has its own: in a monorepo, each Rails app (e.g. `apps/api`) gets its own file. Each command is the full command that runs `rails query`, taken literally (everything after the first `: `), and it ends in `rails query {args}` (`bin/rails`, `bundle exec rails` or plain `rails`):
+Create `.rails_query_remote` at the root of your project (the Rails app, next to `bin/rails`), with one `name: command` per line. Each project has its own: in a monorepo, each Rails app (e.g. `apps/api`) gets its own file. Each command is the full command that runs `rails query`, taken literally (everything after the first `: `), and it ends in `bin/rails query {args}` or `rails query {args}`:
 
 ```
 # Example

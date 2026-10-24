@@ -2,6 +2,12 @@
 
 All notable changes to this plugin are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions match `.claude-plugin/plugin.json`.
 
+## [0.6.1] - 2026-10-24
+
+### Fixed
+
+- `SKILL.md` and the README say a remote command ends in `bin/rails query {args}` or `rails query {args}`, and no longer claim `bundle exec rails` works.
+
 ## [0.6.0] - 2026-10-24
 
 ### Changed
