@@ -80,7 +80,7 @@ If auto mode blocks production runs with `[Production Reads]`, add this to `~/.c
   "autoMode": {
     "allow": [
       "$defaults",
-      "Rails Query: read-only `bin/rails query` data queries aren't production reads unless they read secrets."
+      "Rails Query: read-only `bin/rails query` queries aren't production reads, except for secrets."
     ]
   }
 }
