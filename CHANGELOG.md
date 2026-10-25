@@ -2,6 +2,12 @@
 
 All notable changes to this plugin are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions match `.claude-plugin/plugin.json`.
 
+## [0.6.7] - 2026-10-25
+
+### Changed
+
+- `SKILL.md` is about 20% shorter: same rules, fewer words and no repeated guidance, so it costs fewer tokens to load.
+
 ## [0.6.6] - 2026-10-24
 
 ### Added
