@@ -75,8 +75,6 @@ Each remote run boots the app, often 10–30 seconds, so:
 
 **Keep it simple and readable.** Write it the way you'd write it in the app: idiomatic ActiveRecord or plain SQL, named variables for repeated pieces, one clause per line when it grows, no clever one-liners. The user may read or rerun it.
 
-**Wrap an open range in parentheses** when it ends a line: `since = 30.days.ago..` carries on into the next line (`bad value for range`); write `since = (30.days.ago..)`.
-
 **`--sql`** for raw tables, joins without models, or aggregates awkward in AR. `SyntaxError: unexpected *` means SQL was parsed as Ruby; add `--sql`.
 
 **Check an unfamiliar schema first**, or a guessed column costs a round trip. Read `db/schema.rb` (or `db/structure.sql`) and the model, or run `schema TABLE`, which also lists associations and `enums` (absent when there are none or no model). For enums use `User.where(status: "active")`; `status: 0` may silently misfire.
