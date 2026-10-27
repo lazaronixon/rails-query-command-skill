@@ -8,6 +8,10 @@ All notable changes to this plugin are documented here. The format follows [Keep
 
 - `SKILL.md` tells Claude to keep Ruby and SQL expressions simple and easy to read.
 
+### Changed
+
+- `SKILL.md` has Claude write the expression to a file under `tmp/query/` and pass it with `< file` instead of a heredoc.
+
 ## [0.6.7] - 2026-10-25
 
 ### Changed

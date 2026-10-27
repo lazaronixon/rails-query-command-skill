@@ -18,27 +18,30 @@ Use it for every data question instead of a console, runner script or server she
 
 ## How to run it
 
-Pass the expression on stdin with a quoted heredoc, locally and on remotes alike:
+Write the expression to a file under `tmp/query/` (`.rb` for Ruby, `.sql` for SQL) with your file-writing tool, then pass that file on stdin, locally and on remotes alike:
 
-```bash
-bin/rails query - <<'EOF'
+```ruby
+# tmp/query/recent_users.rb
 recent = User.where(created_at: 30.days.ago..)
 {obrien: recent.where(last_name: "O'Brien").count,
  dollar: recent.where("email LIKE ?", "%$%").count}
-EOF
 ```
 
-- **`-` reads the expression from stdin.** The quoted heredoc (`<<'EOF'`) passes it byte for byte, so quotes, `$` and newlines need no escaping. Never put the expression in the command string, where an apostrophe like `O'Brien` breaks the quoting.
+```bash
+bin/rails query - < tmp/query/recent_users.rb
+```
+
+- **`-` reads the expression from stdin.** The file is passed byte for byte, so quotes, `$` and newlines need no escaping. Never put the expression in the command string, where an apostrophe like `O'Brien` breaks the quoting.
 - **The result is the last line** starting with `{"columns"`, `{"table"`, `{"error"` or `[{"model"`. Logs often surround it (SQL debug logs locally; runner banners, boot output or an echo of the expression on remotes). No such line means the command failed (boot crash, auth, wrong path): read the rest of the output.
 
 Flags and subcommands go before the `-`. `schema` and `models` take no expression: they replace the `-` and get `< /dev/null` (`schema -` would look for a table named `-`).
 
 | Query | Command | stdin |
 |---|---|---|
-| Ruby (default) | `bin/rails query -` | heredoc |
-| SQL | `bin/rails query --sql -` | heredoc |
-| Flags | `bin/rails query --per 500 -`, `bin/rails query --db primary_replica -` | heredoc |
-| EXPLAIN | `bin/rails query explain -`, `bin/rails query --sql explain -` | heredoc |
+| Ruby (default) | `bin/rails query -` | `< tmp/query/NAME.rb` |
+| SQL | `bin/rails query --sql -` | `< tmp/query/NAME.sql` |
+| Flags | `bin/rails query --per 500 -`, `bin/rails query --db primary_replica -` | the query file |
+| EXPLAIN | `bin/rails query explain -`, `bin/rails query --sql explain -` | the query file |
 | Schema, models | `bin/rails query schema`, `bin/rails query schema users`, `bin/rails query models` | `< /dev/null` |
 
 Run from the directory with `bin/rails` (in a monorepo, the app's subdirectory); `.rails_query_remote` lives there too.
@@ -51,12 +54,10 @@ Environment named ("in beta", "on prod"): read `.rails_query_remote` and pick th
 
 ### Running a remote
 
-Replace `{args}` in the remote's command with what follows `bin/rails query` in the table above, and run it otherwise exactly as written, with the same heredoc (`<runner>` is the part before the quoted `rails query`):
+Replace `{args}` in the remote's command with what follows `bin/rails query` in the table above, and run it otherwise exactly as written, with the query file on stdin (`<runner>` is the part before the quoted `rails query`):
 
 ```bash
-<runner> "bin/rails query -" <<'EOF'
-User.where(created_at: 30.days.ago..).group(:plan).count
-EOF
+<runner> "bin/rails query -" < tmp/query/users_by_plan.rb
 ```
 
 Leave the rest (runner, flags, path) alone. If it looks wrong or doesn't end in `bin/rails query {args}`, say so rather than fixing it silently.
@@ -127,7 +128,7 @@ beta: <runner for beta> "bin/rails query {args}"
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `"rows":[[null]]` with `"sql":""`, or with `--sql` an error near ` LIMIT 101` | Nothing arrived on stdin: an empty expression | Put the heredoc on the same command, and make sure the runner forwards stdin |
+| `"rows":[[null]]` with `"sql":""`, or with `--sql` an error near ` LIMIT 101` | Nothing arrived on stdin: an empty expression | Check the file isn't empty and is redirected with `<` on the same command, and make sure the runner forwards stdin |
 | Remote hangs with no result | Runner keeps stdin open | Check the runner's stdin flags; for `schema`/`models` use `< /dev/null` |
 | `ConnectionNotEstablished` with `--db` | Name not in `database.yml` | Use the exact key from `database.yml` |
 | `rails query` unknown command | Rails < 8.2 without the gem, or not deployed | Add `gem "rails-query-command"` and deploy |
