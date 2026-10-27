@@ -70,6 +70,8 @@ Each remote run boots the app, often 10–30 seconds, so:
 
 **Ruby (ActiveRecord) by default.** It is `eval`'d in the app, so scopes, associations, enums and encryption apply. Multi-line is fine; the last value is the result.
 
+**Keep it simple and readable.** Write the expression the way you'd write it in the app: idiomatic ActiveRecord or plain SQL, named variables for repeated pieces, one clause per line when it grows, no clever one-liners. The user may read or rerun it.
+
 **`--sql`** for raw tables, joins without models, or aggregates awkward in AR. `SyntaxError: unexpected *` means SQL was parsed as Ruby; add `--sql`.
 
 **Check an unfamiliar schema first**, or a guessed column costs a round trip. Read `db/schema.rb` (or `db/structure.sql`) and the model, or run `schema TABLE`, which also lists associations and `enums` (absent when there are none or no model). For enums use `User.where(status: "active")`; `status: 0` may silently misfire.
