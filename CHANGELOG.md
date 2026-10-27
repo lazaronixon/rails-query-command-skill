@@ -7,10 +7,14 @@ All notable changes to this plugin are documented here. The format follows [Keep
 ### Added
 
 - `SKILL.md` tells Claude to keep Ruby and SQL expressions simple and easy to read.
+- A "Reporting the answer" section: lead with the answer and its environment, use a small table, name the query file, keep only caveats that change the reading.
+- Query files are named after the question and edited in place on a retry.
+- A warning that an open range ending a line (`30.days.ago..`) swallows the next line, and a troubleshooting row for a query file not found.
 
 ### Changed
 
 - `SKILL.md` has Claude write the expression to a file under `tmp/query/` and pass it with `< file` instead of a heredoc.
+- `SKILL.md` drops the output-shapes table for two sentences and tightens a few rules.
 
 ## [0.6.7] - 2026-10-25
 
