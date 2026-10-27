@@ -60,14 +60,23 @@ Blank lines and lines starting with `#` are ignored. Commit it to share remotes 
 
 Name remotes after the environment (`production`, `beta`) so Claude can match "in beta" or "in production" to the right one. Keep `bin/rails query {args}` at the end of the command string, and let the command pass its stdin through: no `-n` on `ssh`, `-i` on `docker exec` and `kubectl exec`.
 
-Claude reads the file, picks the remote for the environment you named, replaces `{args}` (`-` for a Ruby expression, `--sql -`, `explain -`, `schema users`, …) and runs the command, with the expression on stdin. `rails query -` reads the expression from stdin, so it never passes through a shell: quotes, `$`, parens and newlines arrive intact, and expressions can span several lines:
+Claude reads the file, picks the remote for the environment you named and replaces `{args}` (`-` for a Ruby expression, `--sql -`, `explain -`, `schema users`, …). It writes the expression to a file in `tmp/query/`, named after the question, and runs the command with that file on stdin:
+
+```ruby
+# tmp/query/recent_users.rb
+recent = User.where(created_at: 30.days.ago..)
+
+{
+  obrien: recent.where(last_name: "O'Brien").count,
+  total: recent.count
+}
+```
 
 ```bash
-heroku run -a platform-api-beta -x "apps/api/bin/rails query -" <<'EOF'
-recent = User.where(created_at: 30.days.ago..)
-{obrien: recent.where(last_name: "O'Brien").count, total: recent.count}
-EOF
+heroku run -a platform-api-beta -x "apps/api/bin/rails query -" < tmp/query/recent_users.rb
 ```
+
+`rails query -` reads the expression from stdin, so it never passes through a shell: quotes, `$`, parens and newlines arrive intact, and expressions can span several lines. Keep the `-`: some runners (like `heroku run`) give the command a terminal, and without `-` it then ignores stdin and fails with `No query expression provided`. The query files stay in `tmp/query/`, which Rails ignores in git by default, so you can read or rerun the query behind any answer.
 
 Output is left alone: runner banners, boot logs and the JSON result come through as the runner prints them, with its exit status.
 
